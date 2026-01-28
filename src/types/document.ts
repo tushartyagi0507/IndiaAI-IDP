@@ -5,8 +5,12 @@ export interface UploadedDocument {
   type: string;
   uploadedAt: Date;
   pageCount: number;
-  status: 'uploading' | 'processing' | 'completed' | 'error';
+  status: "uploading" | "processing" | "completed" | "error";
   progress: number;
+  // Optional classification metadata selected before upload
+  category?: string;
+  subcategory?: string;
+  subSubcategory?: string;
 }
 
 export interface ExtractedData {
@@ -41,7 +45,7 @@ export interface Citation {
   };
 }
 
-export type ViewMode = 'raw' | 'structured' | 'json';
-export type SummaryLength = 'short' | 'detailed';
-export type LanguageMode = 'original' | 'english';
-export type ExportFormat = 'json' | 'csv' | 'doc';
+export type ViewMode = "raw" | "structured" | "json";
+export type SummaryLength = "short" | "detailed";
+export type LanguageMode = "original" | "english";
+export type ExportFormat = "json" | "csv" | "doc";

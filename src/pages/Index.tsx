@@ -11,57 +11,74 @@ import { UploadedDocument } from "@/types/document";
 import { cn } from "@/lib/utils";
 
 const Index = () => {
-  const [uploadedDocument, setUploadedDocument] = useState<UploadedDocument | null>(null);
-  const [highlightedRegion, setHighlightedRegion] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [activeTab, setActiveTab] = useState<'extract' | 'summary' | 'tables' | 'language' | 'export'>('extract');
+  const [uploadedDocument, setUploadedDocument] =
+    useState<UploadedDocument | null>(null);
+  const [highlightedRegion, setHighlightedRegion] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    "extract" | "summary" | "tables" | "language" | "export"
+  >("extract");
 
   const handleDocumentUpload = (document: UploadedDocument) => {
     setUploadedDocument(document);
   };
 
-  const handleFieldHover = (region: { x: number; y: number; width: number; height: number } | null) => {
+  const handleFieldHover = (
+    region: { x: number; y: number; width: number; height: number } | null,
+  ) => {
     setHighlightedRegion(region);
   };
 
-  const handleCitationClick = (pageNumber: number, region: { x: number; y: number; width: number; height: number }) => {
+  const handleCitationClick = (
+    pageNumber: number,
+    region: { x: number; y: number; width: number; height: number },
+  ) => {
     setHighlightedRegion(region);
     // In a real app, this would also navigate to the page
   };
 
   const tabs = [
-    { id: 'extract', label: 'Extracted Data' },
-    { id: 'summary', label: 'AI Summary' },
-    { id: 'tables', label: 'Tables' },
-    { id: 'language', label: 'Languages' },
-    { id: 'export', label: 'Export' },
+    { id: "extract", label: "Extracted Data" },
+    { id: "summary", label: "AI Summary" },
+    { id: "tables", label: "Tables" },
+    { id: "language", label: "Languages" },
+    { id: "export", label: "Export" },
   ] as const;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
       <Header />
-      
+
       <main className="container px-4 py-8">
         {/* Hero Section - Visible when no document */}
         {!uploadedDocument && (
           <div className="max-w-4xl mx-auto mb-12 text-center animate-fade-in">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+            {/* <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Powered by Advanced AI
-            </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold mb-4 leading-tight">
+              Powered by AI
+            </div> */}
+            <h1 className="text-4xl md:text-5xl lg:text-5xl font-display font-bold mb-4 leading-tight">
               Transform Documents with
               <span className="block gradient-text">India AI Intelligence</span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-              Extract, analyze, and summarize documents in multiple languages. 
-              Experience the power of AI-driven document processing made in India.
+            <p className="text-md text-muted-foreground max-w-2xl mx-auto mb-8">
+              Extract, analyze, and summarize documents in multiple languages.
+              Experience the power of AI-driven document processing made in
+              India.
             </p>
           </div>
         )}
 
         {/* Upload Section */}
         {!uploadedDocument && (
-          <div className="max-w-3xl mx-auto animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <div
+            className="max-w-3xl mx-auto animate-slide-up"
+            style={{ animationDelay: "0.2s" }}
+          >
             <DocumentUpload onDocumentUpload={handleDocumentUpload} />
           </div>
         )}
@@ -94,7 +111,7 @@ const Index = () => {
             <div className="grid lg:grid-cols-2 gap-6">
               {/* Left - Document Preview */}
               <div className="lg:sticky lg:top-24 h-[calc(100vh-200px)]">
-                <DocumentPreview 
+                <DocumentPreview
                   documentName={uploadedDocument.name}
                   highlightedRegion={highlightedRegion}
                 />
@@ -112,7 +129,7 @@ const Index = () => {
                         "flex-1 min-w-fit px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
                         activeTab === tab.id
                           ? "bg-card text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                       )}
                     >
                       {tab.label}
@@ -122,21 +139,15 @@ const Index = () => {
 
                 {/* Tab Content */}
                 <div className="min-h-[500px]">
-                  {activeTab === 'extract' && (
+                  {activeTab === "extract" && (
                     <ExtractedDataPanel onFieldHover={handleFieldHover} />
                   )}
-                  {activeTab === 'summary' && (
+                  {activeTab === "summary" && (
                     <SummaryPanel onCitationClick={handleCitationClick} />
                   )}
-                  {activeTab === 'tables' && (
-                    <TableViewer />
-                  )}
-                  {activeTab === 'language' && (
-                    <MultiLanguagePanel />
-                  )}
-                  {activeTab === 'export' && (
-                    <ExportPanel />
-                  )}
+                  {activeTab === "tables" && <TableViewer />}
+                  {activeTab === "language" && <MultiLanguagePanel />}
+                  {activeTab === "export" && <ExportPanel />}
                 </div>
               </div>
             </div>
@@ -145,26 +156,58 @@ const Index = () => {
 
         {/* Features Grid - Visible when no document */}
         {!uploadedDocument && (
-          <div className="max-w-5xl mx-auto mt-20 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+          <div
+            id="features"
+            className="max-w-5xl mx-auto mt-20 animate-slide-up scroll-mt-24"
+            style={{ animationDelay: "0.4s" }}
+          >
             <h2 className="text-2xl font-display font-bold text-center mb-8">
               Powerful Features
             </h2>
             <div className="grid md:grid-cols-3 gap-6">
               {[
-                { icon: '🔍', title: 'Smart Extraction', desc: 'Extract text, tables, and structured data automatically' },
-                { icon: '🌐', title: 'Multi-Language', desc: 'Support for Hindi, English, and 50+ languages' },
-                { icon: '✨', title: 'AI Summaries', desc: 'Generate cited summaries with one click' },
-                { icon: '📊', title: 'Table Detection', desc: 'Identify and export tables as spreadsheets' },
-                { icon: '🔗', title: 'Smart Linking', desc: 'Click on summaries to see source regions' },
-                { icon: '📥', title: 'Flexible Export', desc: 'Download as JSON, CSV, or Word documents' },
+                {
+                  icon: "🔍",
+                  title: "Smart Extraction",
+                  desc: "Extract text, tables, and structured data automatically",
+                },
+                {
+                  icon: "🌐",
+                  title: "Multi-Language",
+                  desc: "Support for Hindi, English, and 50+ languages",
+                },
+                {
+                  icon: "✨",
+                  title: "AI Summaries",
+                  desc: "Generate cited summaries with one click",
+                },
+                {
+                  icon: "📊",
+                  title: "Table Detection",
+                  desc: "Identify and export tables as spreadsheets",
+                },
+                {
+                  icon: "🔗",
+                  title: "Smart Linking",
+                  desc: "Click on summaries to see source regions",
+                },
+                {
+                  icon: "📥",
+                  title: "Flexible Export",
+                  desc: "Download as JSON, CSV, or Word documents",
+                },
               ].map((feature, idx) => (
                 <div
                   key={idx}
                   className="group p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-lg transition-all duration-300"
                 >
                   <span className="text-3xl mb-4 block">{feature.icon}</span>
-                  <h3 className="font-display font-semibold mb-2">{feature.title}</h3>
-                  <p className="text-sm text-muted-foreground">{feature.desc}</p>
+                  <h3 className="font-display font-semibold mb-2">
+                    {feature.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {feature.desc}
+                  </p>
                 </div>
               ))}
             </div>
@@ -175,7 +218,15 @@ const Index = () => {
       {/* Footer */}
       <footer className="border-t border-border/50 mt-20 py-8">
         <div className="container px-4 text-center text-sm text-muted-foreground">
-          <p>Built with ❤️ for India AI Initiative</p>
+          <p>
+            @2026 India AI Developed by{" "}
+            <a
+              href="https://www.neuralix.ai"
+              className="text-primary hover:underline"
+            >
+              Neuralix
+            </a>
+          </p>
         </div>
       </footer>
     </div>

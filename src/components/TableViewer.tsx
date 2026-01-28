@@ -7,38 +7,33 @@ const TableViewer = () => {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [sortColumn, setSortColumn] = useState<number | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
+  // Placeholder table metadata – real tables should come from extraction results.
   const tableData = {
-    headers: ['Sector', 'Investment (₹ Cr)', 'Jobs Created', 'Status', 'Timeline'],
-    rows: [
-      ['Healthcare AI', '2,500', '125,000', 'In Progress', 'Q2 2025'],
-      ['Agricultural Tech', '2,000', '100,000', 'Planning', 'Q3 2025'],
-      ['Smart Cities', '3,000', '150,000', 'In Progress', 'Q4 2025'],
-      ['Financial Services', '1,500', '75,000', 'Completed', 'Q1 2024'],
-      ['Education Tech', '1,000', '50,000', 'Planning', 'Q4 2025'],
-    ],
+    headers: [] as string[],
+    rows: [] as string[][],
   };
 
   const handleSort = (colIndex: number) => {
     if (sortColumn === colIndex) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
       setSortColumn(colIndex);
-      setSortDirection('asc');
+      setSortDirection("asc");
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'completed':
-        return 'bg-emerald/10 text-emerald border-emerald/20';
-      case 'in progress':
-        return 'bg-primary/10 text-primary border-primary/20';
-      case 'planning':
-        return 'bg-navy/10 text-navy border-navy/20';
+      case "completed":
+        return "bg-emerald/10 text-emerald border-emerald/20";
+      case "in progress":
+        return "bg-primary/10 text-primary border-primary/20";
+      case "planning":
+        return "bg-navy/10 text-navy border-navy/20";
       default:
-        return 'bg-muted text-muted-foreground';
+        return "bg-muted text-muted-foreground";
     }
   };
 
@@ -47,7 +42,7 @@ const TableViewer = () => {
     const aVal = a[sortColumn];
     const bVal = b[sortColumn];
     const comparison = aVal.localeCompare(bVal, undefined, { numeric: true });
-    return sortDirection === 'asc' ? comparison : -comparison;
+    return sortDirection === "asc" ? comparison : -comparison;
   });
 
   return (
@@ -67,68 +62,82 @@ const TableViewer = () => {
       </div>
 
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-muted/30">
-              {tableData.headers.map((header, index) => (
-                <th
-                  key={index}
-                  className={cn(
-                    "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/50 cursor-pointer hover:bg-muted/50 transition-colors",
-                    selectedCol === index && "bg-primary/5"
-                  )}
-                  onClick={() => handleSort(index)}
-                >
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="w-3 h-3 opacity-30" />
-                    {header}
-                    <ArrowUpDown className={cn(
-                      "w-3 h-3 transition-opacity",
-                      sortColumn === index ? "opacity-100 text-primary" : "opacity-30"
-                    )} />
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((row, rowIndex) => (
-              <tr
-                key={rowIndex}
-                className={cn(
-                  "border-b border-border/30 transition-colors cursor-pointer",
-                  selectedRow === rowIndex 
-                    ? "bg-primary/5" 
-                    : "hover:bg-muted/30"
-                )}
-                onClick={() => setSelectedRow(rowIndex)}
-              >
-                {row.map((cell, cellIndex) => (
-                  <td
-                    key={cellIndex}
+        {tableData.rows.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No tables have been extracted from this document yet. Once your
+            extraction pipeline is connected, detected tables will be listed
+            here.
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="bg-muted/30">
+                {tableData.headers.map((header, index) => (
+                  <th
+                    key={index}
                     className={cn(
-                      "px-4 py-3 text-sm",
-                      selectedCol === cellIndex && "bg-primary/5"
+                      "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/50 cursor-pointer hover:bg-muted/50 transition-colors",
+                      selectedCol === index && "bg-primary/5",
                     )}
-                    onMouseEnter={() => setSelectedCol(cellIndex)}
-                    onMouseLeave={() => setSelectedCol(null)}
+                    onClick={() => handleSort(index)}
                   >
-                    {tableData.headers[cellIndex] === 'Status' ? (
-                      <span className={cn(
-                        "inline-flex px-2.5 py-1 rounded-full text-xs font-medium border",
-                        getStatusColor(cell)
-                      )}>
-                        {cell}
-                      </span>
-                    ) : (
-                      cell
-                    )}
-                  </td>
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="w-3 h-3 opacity-30" />
+                      {header}
+                      <ArrowUpDown
+                        className={cn(
+                          "w-3 h-3 transition-opacity",
+                          sortColumn === index
+                            ? "opacity-100 text-primary"
+                            : "opacity-30",
+                        )}
+                      />
+                    </div>
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sortedRows.map((row, rowIndex) => (
+                <tr
+                  key={rowIndex}
+                  className={cn(
+                    "border-b border-border/30 transition-colors cursor-pointer",
+                    selectedRow === rowIndex
+                      ? "bg-primary/5"
+                      : "hover:bg-muted/30",
+                  )}
+                  onClick={() => setSelectedRow(rowIndex)}
+                >
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={cellIndex}
+                      className={cn(
+                        "px-4 py-3 text-sm",
+                        selectedCol === cellIndex && "bg-primary/5",
+                      )}
+                      onMouseEnter={() => setSelectedCol(cellIndex)}
+                      onMouseLeave={() => setSelectedCol(null)}
+                    >
+                      {tableData.headers[cellIndex] === "Status" ? (
+                        <span
+                          className={cn(
+                            "inline-flex px-2.5 py-1 rounded-full text-xs font-medium border",
+                            getStatusColor(cell),
+                          )}
+                        >
+                          {cell}
+                        </span>
+                      ) : (
+                        cell
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="flex items-center justify-between p-4 bg-muted/20 border-t border-border/50">

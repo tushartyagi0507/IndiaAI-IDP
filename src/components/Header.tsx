@@ -1,4 +1,5 @@
-import { Brain, Sparkles } from "lucide-react";
+import { Brain } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Header = () => {
   return (
@@ -15,15 +16,24 @@ const Header = () => {
             <h1 className="text-xl font-display font-bold tracking-tight">
               <span className="gradient-text">India AI</span>
             </h1>
-            <p className="text-xs text-muted-foreground">Document Intelligence</p>
+            <p className="text-xs text-muted-foreground">
+              Document Intelligence
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50 border border-border/50">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm text-muted-foreground">Powered by AI</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            className="hidden md:inline-flex"
+            onClick={() => {
+              const el = document.getElementById("features");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            Features
+          </Button>
         </div>
       </div>
     </header>

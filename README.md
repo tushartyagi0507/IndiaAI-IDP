@@ -1,73 +1,53 @@
-# Welcome to your Lovable project
+# IndiaAI 
 
-## Project info
+IndiaAI Intelligence is a polished document intelligence workspace built with React, TypeScript, and Tailwind CSS. Upload PDFs, Word documents, or scans, watch a simulated AI pipeline extract structured fields and tables, and interact with adaptive summaries, multilingual explanations, and export options—all within a single responsive UI that showcases what a next-generation document assistant could feel like.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## What the app does
 
-## How can I edit this code?
+- **Smart ingestion**: Drag-and-drop or browse for PDF/DOC/DOCX/PNG/JPG inputs and see a visual upload tracker that mimics real-time progress, processing, and completion states.
+- **Document preview**: Once a file is ready, the app renders a framed preview panel where highlighted regions can be synchronized with extraction fields, summaries, and citations for a contextual feel.
+- **Extracted data & tables**: A tabbed right rail lets you explore simulated field extraction, detect and scroll through tables, and dive into AI-synthesized key-value pairs without leaving the page.
+- **AI summaries with sourcing**: Flip to the summary tab to read generated insights and click citations to refocus the preview on the underlying region.
+- **Multilanguage support**: Switch between languages for translated snippets so you can validate that the same intelligence can span Hindi, English, and over 50 additional locales.
+- **Flexible exports**: Download processed data in formats such as JSON, CSV, or Word so you can hand off structured outputs to downstream workflows.
 
-There are several ways of editing your application.
+## Architecture & tooling
 
-**Use Lovable**
+- **Framework**: Vite + React (via `@vitejs/plugin-react-swc`) for fast refresh, modern bundling, and lean builds.
+- **TypeScript** ensures every component and hook has precise typings (`UploadedDocument`, tab states, callbacks, etc.).
+- **UI stack**: shadcn/ui primitives, Radix UI building blocks, and `tailwindcss`/`tailwind-merge` deliver the polished layout, animations, and responsive utility classes seen in `src/components/*`.
+- **State & utils**: Local `useState` drives upload/simulation state while `src/lib/utils.ts` holds helpers like `cn`. Document shapes live in `src/types/document.ts`.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Folder highlights
 
-Changes made via Lovable will be committed automatically to this repo.
+| Folder                               | Purpose                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pages/Index.tsx`                | Main experience that ties the hero, upload, and tabbed content together.                                                                                      |
+| `src/components/DocumentUpload.tsx`  | Handles drag-drop, progress simulation, and invokes `onDocumentUpload` after the fake processing completes.                                                   |
+| `src/components/*Panel.tsx`          | `ExtractedDataPanel`, `SummaryPanel`, `TableViewer`, `MultiLanguagePanel`, and `ExportPanel` host the content for each tab and emit hover/citation callbacks. |
+| `src/components/DocumentPreview.tsx` | Renders the preview frame and highlights regions triggered from the panels to look synchronized with document analysis.                                       |
+| `src/hooks/use-toast.ts`             | Custom toast hook integrating `sonner` for inline notifications.                                                                                              |
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting started
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install        # install dependencies
+npm run dev        # start dev server with hot reload
+npm run build      # produce a production-ready bundle in dist/
+npm run preview    # locally serve the production build
 ```
 
-**Edit a file directly in GitHub**
+## Testing & linting
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- `npm run test` runs `vitest` suites defined in `src/test/`.
+- `npm run lint` checks the codebase with `eslint` (configured via `eslint.config.js`).
 
-**Use GitHub Codespaces**
+## Deployment
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Build the static assets with `npm run build` and deploy the `dist/` directory to any static host (Vercel, Netlify, GitHub Pages, etc.). Because this app is entirely frontend, you can also run `npm run preview` to sanity-check the production output before publishing.
 
-## What technologies are used for this project?
+## Notes
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- The current extraction, summary, and citation data are simulated. Hook up a backend or AI service where `handleDocumentUpload` currently sets the uploaded document to push real insights.
+- Tailwind styles come from `src/index.css` + `tailwind.config.ts`, with animations provided by `tailwindcss-animate`.
+- Feel free to extend the mock datasets in each panel or add new export formats to mirror your production integration.
