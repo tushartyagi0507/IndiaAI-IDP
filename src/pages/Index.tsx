@@ -9,10 +9,27 @@ import MultiLanguagePanel from "@/components/MultiLanguagePanel";
 import ExportPanel from "@/components/ExportPanel";
 import { UploadedDocument } from "@/types/document";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const Index = () => {
-  const [uploadedDocument, setUploadedDocument] =
-    useState<UploadedDocument | null>(null);
+  // Track all uploaded documents
+  const [uploadedDocuments, setUploadedDocuments] = useState<
+    UploadedDocument[]
+  >([]);
+  // Track the currently selected document
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(
+    null,
+  );
+
+  // Get the current document from the array
+  const currentDocument =
+    uploadedDocuments.find((doc) => doc.id === currentDocumentId) || null;
   const [highlightedRegion, setHighlightedRegion] = useState<{
     x: number;
     y: number;
@@ -24,7 +41,27 @@ const Index = () => {
   >("extract");
 
   const handleDocumentUpload = (document: UploadedDocument) => {
-    setUploadedDocument(document);
+    setUploadedDocuments((prev) => {
+      // Check if document already exists (by id)
+      const exists = prev.some((doc) => doc.id === document.id);
+      if (exists) {
+        // Update existing document
+        return prev.map((doc) => (doc.id === document.id ? document : doc));
+      }
+      // Add new document
+      return [...prev, document];
+    });
+    // Set as current document
+    setCurrentDocumentId(document.id);
+  };
+
+  const handleDocumentSelect = (documentId: string) => {
+    setCurrentDocumentId(documentId);
+  };
+
+  const handleUploadNew = () => {
+    // Keep existing documents but go back to upload view
+    setCurrentDocumentId(null);
   };
 
   const handleFieldHover = (
@@ -44,8 +81,8 @@ const Index = () => {
   const tabs = [
     { id: "extract", label: "Extracted Data" },
     { id: "summary", label: "AI Summary" },
-    { id: "tables", label: "Tables" },
-    { id: "language", label: "Languages" },
+    // { id: "tables", label: "Tables" },
+    { id: "language", label: "Translation" },
     { id: "export", label: "Export" },
   ] as const;
 
@@ -54,8 +91,8 @@ const Index = () => {
       <Header />
 
       <main className="container px-4 py-8">
-        {/* Hero Section - Visible when no document */}
-        {!uploadedDocument && (
+        {/* Hero Section - Visible when no document selected */}
+        {!currentDocument && (
           <div className="max-w-4xl mx-auto mb-12 text-center animate-fade-in">
             {/* <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -74,33 +111,83 @@ const Index = () => {
         )}
 
         {/* Upload Section */}
-        {!uploadedDocument && (
+        {!currentDocument && (
           <div
             className="max-w-3xl mx-auto animate-slide-up"
             style={{ animationDelay: "0.2s" }}
           >
             <DocumentUpload onDocumentUpload={handleDocumentUpload} />
+
+            {/* Show dropdown of previously uploaded files */}
+            {uploadedDocuments.length > 0 && (
+              <div className="mt-6 p-4 rounded-xl bg-card border border-border/50">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Or select from previously uploaded documents:
+                </p>
+                <Select onValueChange={handleDocumentSelect}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a document" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {uploadedDocuments.map((doc) => (
+                      <SelectItem key={doc.id} value={doc.id}>
+                        <div className="flex items-center gap-2">
+                          <span>📄</span>
+                          <span>{doc.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({doc.pageCount} pages)
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         )}
 
         {/* Document Processing View */}
-        {uploadedDocument && (
+        {currentDocument && (
           <div className="space-y-6 animate-fade-in">
-            {/* Document Info Bar */}
+            {/* Document Info Bar with Dropdown */}
             <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border/50">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-emerald/20 flex items-center justify-center">
                   <span className="text-xl">📄</span>
                 </div>
-                <div>
-                  <h2 className="font-semibold">{uploadedDocument.name}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {uploadedDocument.pageCount} pages • Processed successfully
+                <div className="flex-1">
+                  {/* Dropdown for selecting uploaded documents - always visible */}
+                  <Select
+                    value={currentDocumentId || undefined}
+                    onValueChange={handleDocumentSelect}
+                  >
+                    <SelectTrigger className="w-auto min-w-[250px] max-w-[400px] border border-border/50 bg-muted/30 h-auto font-semibold text-foreground hover:bg-muted/50 rounded-lg px-3 py-2">
+                      <SelectValue placeholder="Select a document" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uploadedDocuments.map((doc) => (
+                        <SelectItem key={doc.id} value={doc.id}>
+                          <div className="flex items-center gap-2">
+                            <span>📄</span>
+                            <span>{doc.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {currentDocument.pageCount} pages • Processed successfully
+                    {uploadedDocuments.length > 1 && (
+                      <span className="ml-2">
+                        • {uploadedDocuments.length} files uploaded
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setUploadedDocument(null)}
+                onClick={handleUploadNew}
                 className="text-sm text-primary hover:underline"
               >
                 Upload New Document
@@ -112,7 +199,7 @@ const Index = () => {
               {/* Left - Document Preview */}
               <div className="lg:sticky lg:top-24 h-[calc(100vh-200px)]">
                 <DocumentPreview
-                  documentName={uploadedDocument.name}
+                  documentName={currentDocument.name}
                   highlightedRegion={highlightedRegion}
                 />
               </div>
@@ -154,8 +241,8 @@ const Index = () => {
           </div>
         )}
 
-        {/* Features Grid - Visible when no document */}
-        {!uploadedDocument && (
+        {/* Features Grid - Visible when no document selected */}
+        {!currentDocument && (
           <div
             id="features"
             className="max-w-5xl mx-auto mt-20 animate-slide-up scroll-mt-24"

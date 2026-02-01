@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 
 const ExportPanel = () => {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
-  const [selectedFields, setSelectedFields] = useState<string[]>(["all"]);
   const [showPreview, setShowPreview] = useState(false);
 
   const formats = [
@@ -49,20 +48,6 @@ const ExportPanel = () => {
     { id: "tables", label: "Tables" },
     { id: "summary", label: "AI Summary" },
   ];
-
-  const toggleField = (fieldId: string) => {
-    if (fieldId === "all") {
-      setSelectedFields(["all"]);
-    } else {
-      setSelectedFields((prev) => {
-        const newSelection = prev.filter((f) => f !== "all");
-        if (newSelection.includes(fieldId)) {
-          return newSelection.filter((f) => f !== fieldId);
-        }
-        return [...newSelection, fieldId];
-      });
-    }
-  };
 
   const previewContent = {
     json: `// Preview unavailable
@@ -114,36 +99,6 @@ Connect your export pipeline to see a document preview generated from the extrac
                   {format.description}
                 </span>
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Field Selection */}
-        <div>
-          <label className="text-sm font-medium mb-3 block">
-            Select Fields
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {fields.map((field) => (
-              <label
-                key={field.id}
-                className={cn(
-                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                  selectedFields.includes(field.id) ||
-                    selectedFields.includes("all")
-                    ? "border-primary/30 bg-primary/5"
-                    : "border-border/50 hover:border-primary/20",
-                )}
-              >
-                <Checkbox
-                  checked={
-                    selectedFields.includes(field.id) ||
-                    selectedFields.includes("all")
-                  }
-                  onCheckedChange={() => toggleField(field.id)}
-                />
-                <span className="text-sm">{field.label}</span>
-              </label>
             ))}
           </div>
         </div>

@@ -55,10 +55,6 @@ const ExtractedDataPanel = ({ onFieldHover }: ExtractedDataPanelProps) => {
                 <FileText className="w-3 h-3" />
                 Raw
               </TabsTrigger>
-              <TabsTrigger value="structured" className="h-6 text-xs gap-1.5">
-                <Table className="w-3 h-3" />
-                Structured
-              </TabsTrigger>
               <TabsTrigger value="json" className="h-6 text-xs gap-1.5">
                 <Code className="w-3 h-3" />
                 JSON
