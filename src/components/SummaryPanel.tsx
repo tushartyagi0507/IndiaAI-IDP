@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Loader2, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SummaryLength, LanguageMode } from "@/types/document";
 import { cn } from "@/lib/utils";
+import { useExtractionStore } from "@/store/extractionStore";
+import { useToast } from "@/hooks/use-toast";
 
 interface SummaryPanelProps {
   onCitationClick?: (
@@ -11,22 +13,54 @@ interface SummaryPanelProps {
   ) => void;
 }
 
-const SummaryPanel = ({ onCitationClick }: SummaryPanelProps) => {
+const SummaryPanel = (_props: SummaryPanelProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [summaryLength, setSummaryLength] = useState<SummaryLength>("short");
-  const [language, setLanguage] = useState<LanguageMode>("english");
   const [generatedSummary, setGeneratedSummary] = useState<string | null>(null);
+  const [loading, setloading] = useState(false);
 
-  const placeholderSummary =
-    "Summary generation is not yet connected. Once your AI or backend service is integrated, generated summaries will appear here.";
+  const { toast } = useToast();
 
-  const handleGenerateSummary = () => {
+  const currentDocument = useExtractionStore((state) => state.currentDocument);
+  const document_id = useExtractionStore((state) => state.document_id);
+
+  useEffect(() => {
+    console.log("Current Document:", currentDocument);
+    console.log("Document ID:", document_id);
+  }, [currentDocument, document_id]);
+
+  const handleGenerateSummary = async () => {
+    if (!document_id) {
+      toast({
+        title: "No document selected",
+        description: "Please select a document first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
-    setTimeout(() => {
-      // For now we only show a neutral placeholder to avoid shipping sample content.
-      setGeneratedSummary(placeholderSummary);
+    setloading(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8003/document/${document_id}/summarize`,
+        {
+          method: "POST",
+        },
+      );
+      console.log(response);
+      setGeneratedSummary((await response.json()).summary);
+    } catch (e: unknown) {
+      console.error(e);
+      toast({
+        title: "Error generating summary",
+        description:
+          "There was a problem generating the summary. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+      setloading(false);
+    }
   };
 
   return (
@@ -40,59 +74,6 @@ const SummaryPanel = ({ onCitationClick }: SummaryPanelProps) => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Length Selector */}
-          <div className="flex items-center rounded-lg border border-border/50 p-1">
-            <button
-              onClick={() => setSummaryLength("short")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                summaryLength === "short"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Short
-            </button>
-            <button
-              onClick={() => setSummaryLength("detailed")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                summaryLength === "detailed"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Detailed
-            </button>
-          </div>
-
-          {/* Language Toggle */}
-          <div className="flex items-center rounded-lg border border-border/50 p-1">
-            <button
-              onClick={() => setLanguage("original")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5",
-                language === "original"
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              Original
-            </button>
-            <button
-              onClick={() => setLanguage("english")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                language === "english"
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              English
-            </button>
-          </div>
-
           <Button
             variant="hero"
             onClick={handleGenerateSummary}
@@ -142,7 +123,7 @@ const SummaryPanel = ({ onCitationClick }: SummaryPanelProps) => {
 
         {generatedSummary && !isGenerating && (
           <div className="prose prose-sm max-w-none">
-            <div className="text-sm leading-relaxed space-y-4">
+            <div className="text-sm leading-relaxed space-y-4 max-h-[300px] overflow-y-auto">
               <p>{generatedSummary}</p>
             </div>
           </div>

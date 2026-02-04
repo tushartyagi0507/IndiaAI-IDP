@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import DocumentUpload from "@/components/DocumentUpload";
 import DocumentPreview from "@/components/DocumentPreview";
@@ -9,6 +9,7 @@ import MultiLanguagePanel from "@/components/MultiLanguagePanel";
 import ExportPanel from "@/components/ExportPanel";
 import { UploadedDocument } from "@/types/document";
 import { cn } from "@/lib/utils";
+import { useExtractionStore } from "@/store/extractionStore";
 import {
   Select,
   SelectContent,
@@ -26,10 +27,32 @@ const Index = () => {
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(
     null,
   );
+  const [currentBackendDocumentId, setCurrentBackendDocumentId] = useState<
+    string | null
+  >(null);
 
   // Get the current document from the array
   const currentDocument =
     uploadedDocuments.find((doc) => doc.id === currentDocumentId) || null;
+
+  // Debug: Log current document info
+  useEffect(() => {
+    if (currentDocument) {
+      console.log("Index - Current document:", {
+        id: currentDocument.id,
+        name: currentDocument.name,
+        hasFile: !!currentDocument.file,
+        fileType: currentDocument.file?.type,
+        fileName: currentDocument.file?.name,
+      });
+    }
+  }, [currentDocument]);
+  const documentsByFilename = useExtractionStore(
+    (state) => state.documentsByFilename,
+  );
+  const setCurrentDocument = useExtractionStore(
+    (state) => state.setCurrentDocument,
+  );
   const [highlightedRegion, setHighlightedRegion] = useState<{
     x: number;
     y: number;
@@ -41,28 +64,85 @@ const Index = () => {
   >("extract");
 
   const handleDocumentUpload = (document: UploadedDocument) => {
+    console.log("Index - Document uploaded:", {
+      id: document.id,
+      name: document.name,
+      hasFile: !!document.file,
+      fileType: document.file?.type,
+      fileName: document.file?.name,
+    });
+    const backendDocumentId =
+      documentsByFilename[document.name]?.documentId ?? undefined;
     setUploadedDocuments((prev) => {
       // Check if document already exists (by id)
       const exists = prev.some((doc) => doc.id === document.id);
       if (exists) {
-        // Update existing document
-        return prev.map((doc) => (doc.id === document.id ? document : doc));
+        // Update existing document - preserve file object
+        return prev.map((doc) =>
+          doc.id === document.id ? { ...document, backendDocumentId } : doc,
+        );
       }
-      // Add new document
-      return [...prev, document];
+      // Add new document - ensure file is included
+      return [...prev, { ...document, backendDocumentId }];
     });
     // Set as current document
     setCurrentDocumentId(document.id);
+    setCurrentBackendDocumentId(backendDocumentId ?? null);
+    // Update Zustand store with uploaded document
+    setCurrentDocument(
+      { ...document, backendDocumentId },
+      backendDocumentId ?? null,
+    );
   };
 
   const handleDocumentSelect = (documentId: string) => {
     setCurrentDocumentId(documentId);
+    const selected = uploadedDocuments.find((doc) => doc.id === documentId);
+    const backendId =
+      selected?.backendDocumentId ||
+      (selected ? documentsByFilename[selected.name]?.documentId : null);
+    setCurrentBackendDocumentId(backendId ?? null);
+    // Update Zustand store with selected document
+    setCurrentDocument(selected || null, backendId ?? null);
   };
 
   const handleUploadNew = () => {
     // Keep existing documents but go back to upload view
     setCurrentDocumentId(null);
+    setCurrentBackendDocumentId(null);
+    // Clear current document in Zustand store
+    setCurrentDocument(null, null);
   };
+
+  useEffect(() => {
+    if (!documentsByFilename || uploadedDocuments.length === 0) {
+      return;
+    }
+    setUploadedDocuments((prev) =>
+      prev.map((doc) => {
+        const backendId = documentsByFilename[doc.name]?.documentId;
+        if (!backendId || doc.backendDocumentId === backendId) {
+          return doc;
+        }
+        // Preserve file object when updating backendDocumentId
+        return { ...doc, backendDocumentId: backendId };
+      }),
+    );
+    if (currentDocument) {
+      const backendId =
+        documentsByFilename[currentDocument.name]?.documentId ?? null;
+      if (backendId && backendId !== currentBackendDocumentId) {
+        setCurrentBackendDocumentId(backendId);
+        // Update Zustand store when backend ID becomes available
+        setCurrentDocument(currentDocument, backendId);
+      }
+    }
+  }, [
+    currentBackendDocumentId,
+    currentDocument,
+    documentsByFilename,
+    uploadedDocuments.length,
+  ]);
 
   const handleFieldHover = (
     region: { x: number; y: number; width: number; height: number } | null,
@@ -81,7 +161,7 @@ const Index = () => {
   const tabs = [
     { id: "extract", label: "Extracted Data" },
     { id: "summary", label: "AI Summary" },
-    // { id: "tables", label: "Tables" },
+    { id: "tables", label: "Tables" },
     { id: "language", label: "Translation" },
     { id: "export", label: "Export" },
   ] as const;
@@ -151,32 +231,39 @@ const Index = () => {
         {currentDocument && (
           <div className="space-y-6 animate-fade-in">
             {/* Document Info Bar with Dropdown */}
-            <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border/50">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-emerald/20 flex items-center justify-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-card border border-border/50">
+              <div className="flex items-center gap-4 flex-1 w-full sm:w-auto">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-emerald/20 flex items-center justify-center shrink-0">
                   <span className="text-xl">📄</span>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   {/* Dropdown for selecting uploaded documents - always visible */}
-                  <Select
-                    value={currentDocumentId || undefined}
-                    onValueChange={handleDocumentSelect}
-                  >
-                    <SelectTrigger className="w-auto min-w-[250px] max-w-[400px] border border-border/50 bg-muted/30 h-auto font-semibold text-foreground hover:bg-muted/50 rounded-lg px-3 py-2">
-                      <SelectValue placeholder="Select a document" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {uploadedDocuments.map((doc) => (
-                        <SelectItem key={doc.id} value={doc.id}>
-                          <div className="flex items-center gap-2">
-                            <span>📄</span>
-                            <span>{doc.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  {uploadedDocuments.length > 0 && (
+                    <Select
+                      value={currentDocumentId || undefined}
+                      onValueChange={handleDocumentSelect}
+                    >
+                      <SelectTrigger className="w-full sm:w-auto min-w-[280px] max-w-[500px] border-2 border-primary/30 bg-background h-auto font-semibold text-foreground hover:border-primary/50 hover:bg-muted/30 rounded-lg px-4 py-2.5 shadow-sm">
+                        <SelectValue placeholder="Select a document" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {uploadedDocuments.map((doc) => (
+                          <SelectItem key={doc.id} value={doc.id}>
+                            <div className="flex items-center gap-2">
+                              <span>📄</span>
+                              <span className="truncate">{doc.name}</span>
+                              {doc.pageCount && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({doc.pageCount} pages)
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <p className="text-sm text-muted-foreground mt-2">
                     {currentDocument.pageCount} pages • Processed successfully
                     {uploadedDocuments.length > 1 && (
                       <span className="ml-2">
@@ -188,7 +275,7 @@ const Index = () => {
               </div>
               <button
                 onClick={handleUploadNew}
-                className="text-sm text-primary hover:underline"
+                className="text-sm text-primary hover:underline whitespace-nowrap shrink-0"
               >
                 Upload New Document
               </button>
@@ -197,10 +284,12 @@ const Index = () => {
             {/* Main Content Grid */}
             <div className="grid lg:grid-cols-2 gap-6">
               {/* Left - Document Preview */}
-              <div className="lg:sticky lg:top-24 h-[calc(100vh-200px)]">
+              <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-200px)]">
                 <DocumentPreview
                   documentName={currentDocument.name}
+                  file={currentDocument.file}
                   highlightedRegion={highlightedRegion}
+                  key={currentDocument.id}
                 />
               </div>
 
@@ -211,7 +300,7 @@ const Index = () => {
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => setActiveTab(tab.id as typeof activeTab)}
                       className={cn(
                         "flex-1 min-w-fit px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
                         activeTab === tab.id
@@ -225,9 +314,12 @@ const Index = () => {
                 </div>
 
                 {/* Tab Content */}
-                <div className="min-h-[500px]">
+                <div className="min-h-[500px] lg:h-[calc(100vh-350px)]">
                   {activeTab === "extract" && (
-                    <ExtractedDataPanel onFieldHover={handleFieldHover} />
+                    <ExtractedDataPanel
+                      onFieldHover={handleFieldHover}
+                      selectedFilename={currentDocument?.name || null}
+                    />
                   )}
                   {activeTab === "summary" && (
                     <SummaryPanel onCitationClick={handleCitationClick} />

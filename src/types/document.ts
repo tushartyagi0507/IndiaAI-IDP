@@ -1,5 +1,6 @@
 export interface UploadedDocument {
   id: string;
+  backendDocumentId?: string;
   name: string;
   size: number;
   type: string;
@@ -11,6 +12,8 @@ export interface UploadedDocument {
   category?: string;
   subcategory?: string;
   subSubcategory?: string;
+  // File object for preview
+  file?: File;
 }
 
 export interface ExtractedData {

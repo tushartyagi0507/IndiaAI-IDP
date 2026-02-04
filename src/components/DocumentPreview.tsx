@@ -1,41 +1,184 @@
-import { useState } from "react";
-import { 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCw, 
-  ChevronLeft, 
+import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  ChevronLeft,
   ChevronRight,
   Maximize2,
   Sun,
   Moon,
-  FileText
+  FileText,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+// Set up pdf.js worker using local library
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface DocumentPreviewProps {
   documentName?: string;
-  highlightedRegion?: { x: number; y: number; width: number; height: number } | null;
+  file?: File;
+  highlightedRegion?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
 }
 
-const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewProps) => {
+const DocumentPreview = ({
+  documentName,
+  file,
+  highlightedRegion,
+}: DocumentPreviewProps) => {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [isDarkBg, setIsDarkBg] = useState(false);
   const [showThumbnails, setShowThumbnails] = useState(true);
-  const totalPages = 12;
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50));
-  const handleRotate = () => setRotation(prev => (prev + 90) % 360);
-  const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
-  const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  // Memoize file type detection to update when file changes
+  const isImage = useMemo(() => {
+    if (!file) return false;
+    return (
+      file.type?.startsWith("image/") ||
+      /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file.name)
+    );
+  }, [file]);
+
+  const isPdf = useMemo(() => {
+    if (!file) return false;
+    return (
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf")
+    );
+  }, [file]);
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 25, 200));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 25, 50));
+  const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
+  const handlePrevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
+  const handleNextPage = () =>
+    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+
+  // Debug: Log file info
+  useEffect(() => {
+    if (file) {
+      console.log("DocumentPreview - File received:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        isPdf,
+        isImage,
+      });
+    } else {
+      console.log("DocumentPreview - No file provided");
+    }
+  }, [file, isPdf, isImage]);
+
+  // Load PDF document
+  useEffect(() => {
+    if (!file || !isPdf) {
+      setPdfDoc(null);
+      setTotalPages(1);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const fileReader = new FileReader();
+    fileReader.onload = async (e) => {
+      try {
+        const arrayBuffer = e.target?.result as ArrayBuffer;
+        console.log("Loading PDF, arrayBuffer size:", arrayBuffer.byteLength);
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        console.log("PDF loaded successfully, pages:", pdf.numPages);
+        setPdfDoc(pdf);
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+      } catch (error) {
+        console.error("Error loading PDF:", error);
+        setIsLoading(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fileReader.onerror = (error) => {
+      console.error("FileReader error:", error);
+      setIsLoading(false);
+    };
+    fileReader.readAsArrayBuffer(file);
+  }, [file, isPdf]);
+
+  // Render PDF page
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current || !isPdf) return;
+
+    const renderPage = async () => {
+      try {
+        setIsLoading(true);
+        const page = await pdfDoc.getPage(currentPage);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        const viewport = page.getViewport({ scale: 1.0 });
+        const scale = zoom / 100;
+        const scaledViewport = page.getViewport({ scale });
+
+        canvas.height = scaledViewport.height;
+        canvas.width = scaledViewport.width;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: scaledViewport,
+          canvas: canvas,
+        };
+
+        await page.render(renderContext).promise;
+      } catch (error) {
+        console.error("Error rendering PDF page:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    renderPage();
+  }, [pdfDoc, currentPage, zoom, isPdf]);
+
+  // Load image
+  useEffect(() => {
+    if (!file || !isImage) {
+      setImageUrl(null);
+      return;
+    }
+
+    console.log("Loading image:", file.name);
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    setTotalPages(1);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file, isImage]);
 
   return (
     <div className="flex h-full bg-card rounded-2xl border border-border/50 overflow-hidden">
       {/* Thumbnails Sidebar */}
-      {showThumbnails && (
+      {showThumbnails && isPdf && pdfDoc && totalPages > 1 && (
         <div className="w-24 border-r border-border/50 bg-muted/30 p-2 overflow-y-auto scrollbar-thin">
           <div className="space-y-2">
             {Array.from({ length: totalPages }, (_, i) => (
@@ -46,7 +189,7 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
                   "w-full aspect-[3/4] rounded-lg border-2 transition-all duration-200 bg-background flex items-center justify-center overflow-hidden",
                   currentPage === i + 1
                     ? "border-primary shadow-md"
-                    : "border-transparent hover:border-primary/30"
+                    : "border-transparent hover:border-primary/30",
                 )}
               >
                 <div className="w-full h-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
@@ -71,7 +214,9 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
             >
               <ZoomOut className="w-4 h-4" />
             </Button>
-            <span className="text-sm font-medium w-14 text-center">{zoom}%</span>
+            <span className="text-sm font-medium w-14 text-center">
+              {zoom}%
+            </span>
             <Button
               variant="ghost"
               size="icon"
@@ -91,18 +236,22 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
               variant="ghost"
               size="icon"
               onClick={handlePrevPage}
-              disabled={currentPage <= 1}
+              disabled={currentPage <= 1 || !isPdf || totalPages <= 1}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-sm font-medium min-w-[80px] text-center">
-              Page {currentPage} of {totalPages}
+              {isPdf
+                ? `Page ${currentPage} of ${totalPages}`
+                : isImage
+                  ? "Image"
+                  : "Document"}
             </span>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleNextPage}
-              disabled={currentPage >= totalPages}
+              disabled={currentPage >= totalPages || !isPdf || totalPages <= 1}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -114,7 +263,11 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
               size="icon"
               onClick={() => setIsDarkBg(!isDarkBg)}
             >
-              {isDarkBg ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDarkBg ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -127,42 +280,82 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
         </div>
 
         {/* Document View */}
-        <div 
+        <div
           className={cn(
             "flex-1 overflow-auto p-6 flex items-start justify-center transition-colors duration-300",
-            isDarkBg ? "bg-secondary" : "bg-muted/30 pattern-dots"
+            isDarkBg ? "bg-secondary" : "bg-muted/30 pattern-dots",
           )}
         >
-          <div
-            className="relative bg-card shadow-xl rounded-lg overflow-hidden transition-transform duration-300"
-            style={{
-              transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              transformOrigin: 'top center',
-            }}
-          >
-            {/* Simulated Document Content */}
-            <div className="w-[595px] min-h-[842px] p-12 space-y-6">
-              <div className="space-y-4">
-                <div className="h-8 w-3/4 bg-gradient-to-r from-navy/20 to-navy/10 rounded animate-pulse" />
-                <div className="h-4 w-1/2 bg-muted rounded" />
-              </div>
-              
-              <div className="space-y-3 pt-6">
-                {Array.from({ length: 8 }, (_, i) => (
-                  <div 
-                    key={i} 
-                    className={cn(
-                      "h-3 rounded",
-                      i % 3 === 0 ? "w-full bg-muted/80" : i % 3 === 1 ? "w-5/6 bg-muted/60" : "w-4/5 bg-muted/40"
-                    )}
+          {isLoading && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          )}
+
+          {!file && !isLoading && (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <FileText className="w-16 h-16 mb-4 opacity-50" />
+              <p className="text-sm">No document selected</p>
+            </div>
+          )}
+
+          {file && !isLoading && (
+            <div className="relative bg-card shadow-xl rounded-lg overflow-hidden transition-transform duration-300">
+              {isPdf && pdfDoc ? (
+                <div
+                  style={{
+                    transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+                    transformOrigin: "top center",
+                  }}
+                >
+                  <canvas ref={canvasRef} className="block" />
+                </div>
+              ) : isPdf && !pdfDoc ? (
+                <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+                  <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                  <p className="text-sm">Loading PDF...</p>
+                </div>
+              ) : null}
+
+              {isImage && imageUrl ? (
+                <div
+                  style={{
+                    transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+                    transformOrigin: "top center",
+                  }}
+                >
+                  <img
+                    src={imageUrl}
+                    alt={documentName || "Document preview"}
+                    className="max-w-full h-auto block"
+                    onError={(e) => {
+                      console.error("Image load error:", e);
+                    }}
+                    onLoad={() => {
+                      console.log("Image loaded successfully");
+                    }}
                   />
-                ))}
-              </div>
+                </div>
+              ) : isImage && !imageUrl ? (
+                <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+                  <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                  <p className="text-sm">Loading image...</p>
+                </div>
+              ) : null}
+
+              {!isPdf && !isImage && file && (
+                <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+                  <FileText className="w-16 h-16 mb-4 opacity-50" />
+                  <p className="text-sm">Unsupported file type</p>
+                  <p className="text-xs mt-2">File: {file.name}</p>
+                  <p className="text-xs">Type: {file.type || "unknown"}</p>
+                </div>
+              )}
 
               {/* Highlighted Region */}
               {highlightedRegion && (
                 <div
-                  className="absolute border-2 border-primary bg-primary/10 rounded transition-all duration-300"
+                  className="absolute border-2 border-primary bg-primary/10 rounded transition-all duration-300 pointer-events-none z-10"
                   style={{
                     left: `${highlightedRegion.x}%`,
                     top: `${highlightedRegion.y}%`,
@@ -171,40 +364,8 @@ const DocumentPreview = ({ documentName, highlightedRegion }: DocumentPreviewPro
                   }}
                 />
               )}
-
-              {/* Table Simulation */}
-              <div className="mt-8 border border-border rounded-lg overflow-hidden">
-                <div className="grid grid-cols-4 bg-muted/50">
-                  {['Header 1', 'Header 2', 'Header 3', 'Header 4'].map((h, i) => (
-                    <div key={i} className="p-3 text-xs font-medium text-muted-foreground border-r last:border-r-0">
-                      {h}
-                    </div>
-                  ))}
-                </div>
-                {Array.from({ length: 4 }, (_, rowIdx) => (
-                  <div key={rowIdx} className="grid grid-cols-4 border-t border-border">
-                    {Array.from({ length: 4 }, (_, colIdx) => (
-                      <div key={colIdx} className="p-3 text-xs text-muted-foreground border-r last:border-r-0">
-                        Data {rowIdx + 1}.{colIdx + 1}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3 pt-6">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <div 
-                    key={i} 
-                    className={cn(
-                      "h-3 rounded",
-                      i % 2 === 0 ? "w-full bg-muted/60" : "w-11/12 bg-muted/40"
-                    )}
-                  />
-                ))}
-              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

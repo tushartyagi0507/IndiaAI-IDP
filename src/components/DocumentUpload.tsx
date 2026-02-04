@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { useExtractionStore } from "@/store/extractionStore";
 
 interface DocumentUploadProps {
   onDocumentUpload: (document: UploadedDocument) => void;
@@ -84,6 +85,7 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const processingIntervalRef = useRef<number | null>(null);
+  const setBatchResult = useExtractionStore((state) => state.setBatchResult);
 
   const { toast } = useToast();
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -153,10 +155,10 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
       }
 
       const formData = new FormData();
-      formData.append("category", category);
-      formData.append("subcategory", subcategory);
       if (subSubcategory) {
         formData.append("subSubcategory", subSubcategory);
+      } else {
+        formData.append("category", subcategory);
       }
       files.forEach((file) => {
         formData.append("files", file);
@@ -164,30 +166,58 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
 
       try {
         // API call fires immediately - processing state already set before this function is called
-        const response = await fetch("/api/upload", {
+        const response = await fetch("http://localhost:8003/upload/ocr", {
           method: "POST",
           body: formData,
         });
 
         if (!response.ok) {
+          setIsProcessing(false);
           throw new Error("Upload failed");
+        }
+
+        const payload = (await response.json()) as {
+          batch_id?: string;
+          documents?: {
+            filename: string;
+            document_id: string;
+            markdown?: string;
+            html?: string;
+            json?: Record<string, unknown>;
+            pages?: unknown[];
+          }[];
+        };
+        if (payload?.batch_id && Array.isArray(payload?.documents)) {
+          setBatchResult({
+            batchId: payload.batch_id,
+            documents: payload.documents.map((doc) => ({
+              filename: doc.filename,
+              documentId: doc.document_id,
+              markdown: doc.markdown ?? "",
+              html: doc.html,
+              json: doc.json,
+              pages: doc.pages,
+            })),
+          });
+          // Set processing to false after successful response
+          setTimeout(() => {
+            setIsProcessing(false);
+          }, 600);
+        } else {
+          setIsProcessing(false);
         }
       } catch (error) {
         console.error("Upload error:", error);
+        setIsProcessing(false);
         toast({
           title: "Upload failed",
           description:
             "There was a problem uploading your files. Please try again.",
           variant: "destructive",
         });
-      } finally {
-        // allow the final step to be visible briefly before hiding
-        setTimeout(() => {
-          setIsProcessing(false);
-        }, 600);
       }
     },
-    [category, subcategory, subSubcategory, toast],
+    [category, setBatchResult, subcategory, subSubcategory, toast],
   );
 
   const simulateUpload = useCallback(
@@ -204,6 +234,7 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
         category,
         subcategory,
         subSubcategory,
+        file: file, // Store file object for preview
       };
 
       setUploadingFiles((prev) => [...prev, doc]);
@@ -239,6 +270,7 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
                       ...doc,
                       status: "completed",
                       progress: 100,
+                      file: file, // Ensure file is included
                     });
                   }, 1500);
                 }, 500);

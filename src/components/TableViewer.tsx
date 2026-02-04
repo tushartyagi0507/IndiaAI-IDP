@@ -1,18 +1,113 @@
-import { useState } from "react";
-import { Download, GripVertical, ArrowUpDown, Maximize2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
+import {
+  GripVertical,
+  ArrowUpDown,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useExtractionStore } from "@/store/extractionStore";
+import { useToast } from "@/hooks/use-toast";
+
+
+
+interface FieldsResponse {
+  document_id: string;
+  fields: Record<string, string>;
+}
 
 const TableViewer = () => {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [selectedCol, setSelectedCol] = useState<number | null>(null);
   const [sortColumn, setSortColumn] = useState<number | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [isLoading, setIsLoading] = useState(false);
+  const [tableData, setTableData] = useState<{
+    headers: string[];
+    rows: string[][];
+  }>({
+    headers: [],
+    rows: [],
+  });
 
-  // Placeholder table metadata – real tables should come from extraction results.
-  const tableData = {
-    headers: [] as string[],
-    rows: [] as string[][],
+  const document_id = useExtractionStore((state) => state.document_id);
+  const currentDocument = useExtractionStore((state) => state.currentDocument);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchDocumentFields = async () => {
+      if (!document_id || !currentDocument) {
+        setTableData({ headers: [], rows: [] });
+        return;
+      }
+
+      // Get subcategory from currentDocument
+      const subcategory =
+        currentDocument.subcategory || currentDocument.subSubcategory;
+      if (!subcategory) {
+        toast({
+          title: "Missing subcategory",
+          description:
+            "Subcategory information is not available for this document.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const response = await fetch(
+          `http://localhost:8003/document/${document_id}/extract`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              doc_type: subcategory,
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch document fields: ${response.statusText}`,
+          );
+        }
+
+        const data: FieldsResponse = await response.json();
+
+        // Convert fields object to table format
+        const headers = Object.keys(data.fields);
+        const row = Object.values(data.fields);
+
+        setTableData({
+          headers,
+          rows: [row],
+        });
+      } catch (error) {
+        console.error("Error fetching document fields:", error);
+        toast({
+          title: "Error loading fields",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Failed to load document fields.",
+          variant: "destructive",
+        });
+        setTableData({ headers: [], rows: [] });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDocumentFields();
+  }, [document_id, currentDocument, toast]);
+
+  const formatFieldName = (fieldName: string): string => {
+    return fieldName
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   };
 
   const handleSort = (colIndex: number) => {
@@ -23,6 +118,7 @@ const TableViewer = () => {
       setSortDirection("asc");
     }
   };
+
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -50,22 +146,21 @@ const TableViewer = () => {
       <div className="flex items-center justify-between p-4 border-b border-border/50">
         <h3 className="font-display font-semibold">Extracted Tables</h3>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Maximize2 className="w-4 h-4 mr-2" />
-            Expand
-          </Button>
-          <Button variant="saffron" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export Table
-          </Button>
         </div>
       </div>
 
       <div className="overflow-x-auto scrollbar-thin">
-        {tableData.rows.length === 0 ? (
+        {isLoading ? (
+          <div className="p-6 text-center">
+            <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Loading document fields...
+            </p>
+          </div>
+        ) : tableData.rows.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No tables have been extracted from this document yet. Once your
-            extraction pipeline is connected, detected tables will be listed
+            No fields have been extracted from this document yet. Once your
+            extraction pipeline is connected, detected fields will be listed
             here.
           </div>
         ) : (
@@ -83,7 +178,7 @@ const TableViewer = () => {
                   >
                     <div className="flex items-center gap-2">
                       <GripVertical className="w-3 h-3 opacity-30" />
-                      {header}
+                      {formatFieldName(header)}
                       <ArrowUpDown
                         className={cn(
                           "w-3 h-3 transition-opacity",
@@ -140,14 +235,6 @@ const TableViewer = () => {
         )}
       </div>
 
-      <div className="flex items-center justify-between p-4 bg-muted/20 border-t border-border/50">
-        <p className="text-xs text-muted-foreground">
-          {tableData.rows.length} rows × {tableData.headers.length} columns
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Click on a row to highlight • Drag column headers to resize
-        </p>
-      </div>
     </div>
   );
 };
