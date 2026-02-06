@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useExtractionStore } from "@/store/extractionStore";
+import useUserCategory, {
+  mapSelectionToCategoryKey,
+} from "@/store/userCategory";
 
 interface DocumentUploadProps {
   onDocumentUpload: (document: UploadedDocument) => void;
@@ -111,6 +114,22 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
     setSubSubcategory(undefined);
   }, [category, subcategory]);
 
+  const { setCategoryFromSelection, resetCategory } = useUserCategory();
+
+  // Persist mapped category key to store.
+  // If a sub-subcategory is selected, it takes precedence.
+  useEffect(() => {
+    if (subSubcategory) {
+      setCategoryFromSelection(subSubcategory, "subSubcategory");
+      return;
+    }
+    if (subcategory) {
+      setCategoryFromSelection(subcategory, "subcategory");
+      return;
+    }
+    resetCategory();
+  }, [subcategory, subSubcategory, setCategoryFromSelection, resetCategory]);
+
   // Cycle through processing steps while API call is in progress
   useEffect(() => {
     if (!isProcessing) {
@@ -155,11 +174,13 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
       }
 
       const formData = new FormData();
-      if (subSubcategory) {
-        formData.append("subSubcategory", subSubcategory);
-      } else {
-        formData.append("category", subcategory);
-      }
+
+      const mappedCategory =
+        subSubcategory && hasSubSubcategories(category, subcategory)
+          ? mapSelectionToCategoryKey(subSubcategory, "subSubcategory")
+          : mapSelectionToCategoryKey(subcategory, "subcategory");
+
+      formData.append("category", mappedCategory);
       files.forEach((file) => {
         formData.append("files", file);
       });

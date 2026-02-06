@@ -42,6 +42,7 @@ const DocumentPreview = ({
   const [showThumbnails, setShowThumbnails] = useState(true);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRendering, setIsRendering] = useState(false);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -126,7 +127,7 @@ const DocumentPreview = ({
 
     const renderPage = async () => {
       try {
-        setIsLoading(true);
+        setIsRendering(true);
         const page = await pdfDoc.getPage(currentPage);
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -151,12 +152,12 @@ const DocumentPreview = ({
       } catch (error) {
         console.error("Error rendering PDF page:", error);
       } finally {
-        setIsLoading(false);
+        setIsRendering(false);
       }
     };
 
     renderPage();
-  }, [pdfDoc, currentPage, zoom, isPdf]);
+  }, [pdfDoc, currentPage, zoom, isPdf, rotation]);
 
   // Load image
   useEffect(() => {
@@ -286,7 +287,7 @@ const DocumentPreview = ({
             isDarkBg ? "bg-secondary" : "bg-muted/30 pattern-dots",
           )}
         >
-          {isLoading && (
+          {(isLoading || isRendering) && (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
@@ -299,7 +300,7 @@ const DocumentPreview = ({
             </div>
           )}
 
-          {file && !isLoading && (
+          {file && (
             <div className="relative bg-card shadow-xl rounded-lg overflow-hidden transition-transform duration-300">
               {isPdf && pdfDoc ? (
                 <div
