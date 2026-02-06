@@ -15,6 +15,7 @@ interface ExtractionState {
   documentsByFilename: Record<string, ExtractionDocument>;
   currentDocument: UploadedDocument | null;
   document_id: string | null;
+  isProcessing: boolean;
   setBatchResult: (payload: {
     batchId: string;
     documents: ExtractionDocument[];
@@ -23,6 +24,7 @@ interface ExtractionState {
     document: UploadedDocument | null,
     documentId: string | null,
   ) => void;
+  setIsProcessing: (isProcessing: boolean) => void;
   clearResults: () => void;
 }
 
@@ -31,6 +33,7 @@ export const useExtractionStore = create<ExtractionState>((set) => ({
   documentsByFilename: {},
   currentDocument: null,
   document_id: null,
+  isProcessing: false,
   setBatchResult: ({ batchId, documents }) =>
     set(() => ({
       batchId,
@@ -47,11 +50,16 @@ export const useExtractionStore = create<ExtractionState>((set) => ({
       currentDocument: document,
       document_id: documentId,
     })),
+  setIsProcessing: (isProcessing: boolean) =>
+    set(() => ({
+      isProcessing,
+    })),
   clearResults: () =>
     set(() => ({
       batchId: null,
       documentsByFilename: {},
       currentDocument: null,
       document_id: null,
+      isProcessing: false,
     })),
 }));

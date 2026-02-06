@@ -215,7 +215,6 @@
 
 // export default MultiLanguagePanel;
 
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Languages, ArrowLeftRight, Loader2, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -228,29 +227,67 @@ import { useToast } from "@/hooks/use-toast";
 const MultiLanguagePanel = () => {
   const [viewMode, setViewMode] = useState<
     "original" | "translated" | "sideBySide"
-  >("translated");
+  >("original");
 
   const [translatedText, setTranslatedText] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
 
-  const englishRef = useRef<HTMLDivElement>(null)
-
   const translatedRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const documentsByFilename = useExtractionStore(
-    (state) => state.documentsByFilename
+    (state) => state.documentsByFilename,
   );
-  const currentDocument = useExtractionStore(
-    (state) => state.currentDocument
-  );
+  const currentDocument = useExtractionStore((state) => state.currentDocument);
   const document_id = useExtractionStore((state) => state.document_id);
   const { toast } = useToast();
 
   const originalText = useMemo(() => {
     if (!currentDocument) return "";
     const doc = documentsByFilename[currentDocument.name];
+
+    // Process layout blocks for better formatting (same as ExtractedDataPanel)
+    const firstPage = doc?.pages?.[0];
+    if (
+      firstPage &&
+      typeof firstPage === "object" &&
+      "layout_blocks" in firstPage
+    ) {
+      const layoutBlocks = (firstPage as Record<string, unknown>)
+        .layout_blocks as Array<{
+        bbox: [number, number, number, number];
+        label: string;
+        content: string;
+      }>;
+
+      // Sort blocks by vertical position (top to bottom), then left to right
+      const sortedBlocks = layoutBlocks.sort((a, b) => {
+        const [, aY] = a.bbox;
+        const [, bY] = b.bbox;
+        if (Math.abs(aY - bY) < 50) {
+          return a.bbox[0] - b.bbox[0];
+        }
+        return aY - bY;
+      });
+
+      // Filter out image blocks and empty content
+      const filteredBlocks = sortedBlocks.filter(
+        (block) =>
+          block.label !== "Image" &&
+          block.content &&
+          block.content.trim() &&
+          !block.content.includes("img alt=") &&
+          !block.content.includes("<img"),
+      );
+
+      // Create cleaned HTML content
+      const cleanHtml = filteredBlocks
+        .map((block) => block.content)
+        .join("\n\n");
+      return cleanHtml || doc?.markdown || doc?.html || "";
+    }
+
     return doc?.markdown || doc?.html || "";
   }, [currentDocument, documentsByFilename]);
 
@@ -262,13 +299,20 @@ const MultiLanguagePanel = () => {
   }, []);
 
   useEffect(() => {
-    if(!englishRef.current) return;
-    englishRef.current.click();
-  }, []);
-  
+    if (
+      (viewMode === "translated" || viewMode === "sideBySide") &&
+      document_id &&
+      !translatedText &&
+      !isTranslating
+    ) {
+      fetchTranslation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, document_id]);
 
   useEffect(() => {
-    setViewMode("translated")
+    console.log("document_id", document_id);
+    setViewMode("translated");
     setTranslatedText(null);
     setTranslateError(null);
     setIsTranslating(false);
@@ -280,7 +324,7 @@ const MultiLanguagePanel = () => {
       toast({
         title: "No document selected",
         description: "Please select a document first.",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
@@ -296,8 +340,8 @@ const MultiLanguagePanel = () => {
         `http://localhost:8003/document/${document_id}/translate`,
         {
           method: "POST",
-          signal: abortControllerRef.current.signal
-        }
+          signal: abortControllerRef.current.signal,
+        },
       );
 
       if (!response.ok) {
@@ -321,7 +365,7 @@ const MultiLanguagePanel = () => {
         "";
 
       setTranslatedText(translated || null);
-    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {// eslint-disable-line @typescript-eslint/no-explicit-any
       if (error.name !== "AbortError") {
         const message =
           error instanceof Error
@@ -331,7 +375,7 @@ const MultiLanguagePanel = () => {
         toast({
           title: "Translation failed",
           description: message,
-          variant: "destructive"
+          variant: "destructive",
         });
       }
     } finally {
@@ -382,10 +426,56 @@ const MultiLanguagePanel = () => {
     printWindow.print();
   };
 
+  const renderHTML = (
+    text: string | null,
+    isLoading?: boolean,
+    ref?: React.RefObject<HTMLDivElement>,
+  ) => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          Loading...
+        </div>
+      );
+    }
+
+    if (!text) {
+      return (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          No content available yet.
+        </p>
+      );
+    }
+
+    return (
+      <div
+        ref={ref}
+        className="h-[420px] overflow-y-auto overflow-x-hidden pr-2 
+          prose prose-sm prose-slate max-w-none
+          prose-headings:text-foreground prose-headings:font-semibold
+          prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3
+          prose-strong:text-foreground prose-strong:font-semibold
+          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+          prose-table:w-full prose-table:border-collapse prose-table:my-4
+          prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground
+          prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground
+          prose-ul:my-3 prose-ol:my-3
+          prose-li:text-foreground prose-li:my-1
+          prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+          prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
+          prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
+          [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
+          break-words whitespace-normal"
+        dangerouslySetInnerHTML={{ __html: text }}
+      />
+    );
+  };
+
   const renderMarkdown = (
     text: string | null,
     isLoading?: boolean,
-    ref?: React.RefObject<HTMLDivElement>
+    ref?: React.RefObject<HTMLDivElement>,
   ) => {
     if (isLoading) {
       return (
@@ -407,25 +497,24 @@ const MultiLanguagePanel = () => {
     return (
       <div
         ref={ref}
-        className="h-[420px] overflow-y-auto overflow-x-hidden pr-2"
+        className="h-[420px] overflow-y-auto overflow-x-hidden pr-2 
+          prose prose-sm prose-slate max-w-none
+          prose-headings:text-foreground prose-headings:font-semibold
+          prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3
+          prose-strong:text-foreground prose-strong:font-semibold
+          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+          prose-table:w-full prose-table:border-collapse prose-table:my-4
+          prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground
+          prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground
+          prose-ul:my-3 prose-ol:my-3
+          prose-li:text-foreground prose-li:my-1
+          prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+          prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
+          prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
+          [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
+          break-words whitespace-normal"
       >
- <div
-  ref={ref}
-  className="h-[420px] overflow-y-auto overflow-x-hidden pr-2 
-    prose prose-sm max-w-none text-foreground
-    break-words whitespace-normal
-    [&_img]:max-w-full
-    [&_img]:h-auto
-    [&_img]:rounded-lg
-    [&_img]:my-4
-    [&_h2]:text-lg
-    [&_h2]:font-semibold
-    [&_p]:leading-relaxed"
->
-  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-    {text}
-  </ReactMarkdown>
-</div>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
     );
   };
@@ -456,7 +545,7 @@ const MultiLanguagePanel = () => {
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
                 viewMode === "original"
                   ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Original
@@ -473,7 +562,7 @@ const MultiLanguagePanel = () => {
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
                 viewMode === "translated"
                   ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               English
@@ -490,7 +579,7 @@ const MultiLanguagePanel = () => {
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5",
                 viewMode === "sideBySide"
                   ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -503,7 +592,7 @@ const MultiLanguagePanel = () => {
       <div className="p-4">
         {viewMode === "original" && (
           <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">
-            {renderMarkdown(originalText)}
+            {renderHTML(originalText)}
           </div>
         )}
 
@@ -525,7 +614,7 @@ const MultiLanguagePanel = () => {
               <p className="text-xs font-medium text-muted-foreground mb-2">
                 Original
               </p>
-              {renderMarkdown(originalText)}
+              {renderHTML(originalText)}
             </div>
 
             <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">

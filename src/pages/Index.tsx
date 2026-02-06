@@ -434,6 +434,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
+import useUserCategory from "@/store/userCategory";
 
 const Index = () => {
   const [uploadedDocuments, setUploadedDocuments] = useState<
@@ -442,8 +450,11 @@ const Index = () => {
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(
     null,
   );
-  const [currentBackendDocumentId, setCurrentBackendDocumentId] =
-    useState<string | null>(null);
+  const [currentBackendDocumentId, setCurrentBackendDocumentId] = useState<
+    string | null
+  >(null);
+  // When true, upload view is "add to current setup" (locked to current category)
+  const [isAddToCurrentSetup, setIsAddToCurrentSetup] = useState(false);
 
   const currentDocument =
     uploadedDocuments.find((doc) => doc.id === currentDocumentId) || null;
@@ -454,6 +465,14 @@ const Index = () => {
   const setCurrentDocument = useExtractionStore(
     (state) => state.setCurrentDocument,
   );
+  const clearResults = useExtractionStore((state) => state.clearResults);
+  const isProcessing = useExtractionStore((state) => state.isProcessing);
+
+  // Check if we have extracted data for the current document
+  const hasExtractedData = currentDocument
+    ? !!documentsByFilename[currentDocument.name]
+    : false;
+  const { name: categoryName, resetCategory } = useUserCategory();
 
   const [highlightedRegion, setHighlightedRegion] = useState<{
     x: number;
@@ -504,10 +523,21 @@ const Index = () => {
     setCurrentDocument(selected || null, backendId ?? null);
   };
 
-  const handleUploadNew = () => {
+  const handleAddDocuments = () => {
     setCurrentDocumentId(null);
     setCurrentBackendDocumentId(null);
     setCurrentDocument(null, null);
+    setIsAddToCurrentSetup(true);
+  };
+
+  const handleStartNew = () => {
+    setUploadedDocuments([]);
+    clearResults();
+    resetCategory();
+    setCurrentDocumentId(null);
+    setCurrentBackendDocumentId(null);
+    setCurrentDocument(null, null);
+    setIsAddToCurrentSetup(false);
   };
 
   useEffect(() => {
@@ -582,9 +612,34 @@ const Index = () => {
               </p>
             </div>
 
+            {/* Add-to-setup banner when adding to current session */}
+            {isAddToCurrentSetup && uploadedDocuments.length > 0 && (
+              <div className="max-w-3xl mx-auto w-full mb-4 px-4 py-3 rounded-xl bg-primary/10 border border-primary/20">
+                <p className="text-sm font-medium text-foreground">
+                  Adding to current setup
+                  {categoryName && (
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      • Category:{" "}
+                      <span className="text-foreground">{categoryName}</span>
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  New files will use the same category. Only documents for this
+                  category can be added here.
+                </p>
+              </div>
+            )}
+
             {/* Upload Section */}
             <div className="max-w-3xl mx-auto w-full">
-              <DocumentUpload onDocumentUpload={handleDocumentUpload} />
+              <DocumentUpload
+                onDocumentUpload={handleDocumentUpload}
+                lockToCurrentCategory={
+                  isAddToCurrentSetup && uploadedDocuments.length > 0
+                }
+              />
 
               {uploadedDocuments.length > 0 && (
                 <div className="mt-6 p-4 rounded-xl bg-card border border-border/50">
@@ -612,7 +667,7 @@ const Index = () => {
         {currentDocument && (
           <div className="flex flex-col gap-4 h-full">
             {/* Compact Document Bar */}
-            <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-card border border-border/50">
+            <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-card border border-border/50 gap-3 flex-wrap">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <span className="text-lg">📄</span>
 
@@ -632,17 +687,28 @@ const Index = () => {
                   </SelectContent>
                 </Select>
 
-                <span className="text-xs text-muted-foreground">
-                  {currentDocument.pageCount} pages
-                </span>
+                {categoryName && (
+                  <span className="text-xs text-muted-foreground shrink-0 px-2 py-1 rounded-md bg-muted/60">
+                    Category: {categoryName}
+                  </span>
+                )}
               </div>
 
-              <button
-                onClick={handleUploadNew}
-                className="text-sm text-primary hover:underline"
-              >
-                Upload New
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                    Upload New <ChevronDown className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleAddDocuments}>
+                    Add documents (same category)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleStartNew}>
+                    Start new session
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Main Grid */}
@@ -659,39 +725,57 @@ const Index = () => {
 
               {/* Panels */}
               <div className="flex flex-col h-full overflow-hidden">
-                {/* Tabs */}
-                <div className="flex gap-1 p-1 rounded-xl bg-muted/50">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                      className={cn(
-                        "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                        activeTab === tab.id
-                          ? "bg-card text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
+                {isProcessing || !hasExtractedData ? (
+                  <div className="flex items-center justify-center h-full bg-card rounded-2xl border border-border/50">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-muted-foreground font-medium">
+                        Text is being extracted from your document...
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Please wait while we process your file
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Tabs */}
+                    <div className="flex gap-1 p-1 rounded-xl bg-muted/50">
+                      {tabs.map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() =>
+                            setActiveTab(tab.id as typeof activeTab)
+                          }
+                          className={cn(
+                            "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                            activeTab === tab.id
+                              ? "bg-card text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
 
-                {/* Tab Content */}
-                <div className="flex-1 overflow-auto mt-4">
-                  {activeTab === "extract" && (
-                    <ExtractedDataPanel
-                      onFieldHover={handleFieldHover}
-                      selectedFilename={currentDocument?.name || null}
-                    />
-                  )}
-                  {activeTab === "summary" && (
-                    <SummaryPanel onCitationClick={handleCitationClick} />
-                  )}
-                  {activeTab === "tables" && <TableViewer />}
-                  {activeTab === "language" && <MultiLanguagePanel />}
-                  {activeTab === "export" && <ExportPanel />}
-                </div>
+                    {/* Tab Content */}
+                    <div className="flex-1 overflow-auto mt-4">
+                      {activeTab === "extract" && (
+                        <ExtractedDataPanel
+                          onFieldHover={handleFieldHover}
+                          selectedFilename={currentDocument?.name || null}
+                        />
+                      )}
+                      {activeTab === "summary" && (
+                        <SummaryPanel onCitationClick={handleCitationClick} />
+                      )}
+                      {activeTab === "tables" && <TableViewer />}
+                      {activeTab === "language" && <MultiLanguagePanel />}
+                      {activeTab === "export" && <ExportPanel />}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

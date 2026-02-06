@@ -19,6 +19,8 @@ import useUserCategory, {
 
 interface DocumentUploadProps {
   onDocumentUpload: (document: UploadedDocument) => void;
+  /** When true, category is fixed to the current store category (add-to-setup mode). */
+  lockToCurrentCategory?: boolean;
 }
 
 // Category structure: subcategory can be a string or an object with subSubcategories array
@@ -79,16 +81,25 @@ const hasSubSubcategories = (cat: string, subcat: string): boolean => {
   return getSubSubcategories(cat, subcat) !== undefined;
 };
 
-const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
+const DocumentUpload = ({
+  onDocumentUpload,
+  lockToCurrentCategory = false,
+}: DocumentUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadedDocument[]>([]);
   const [category, setCategory] = useState<string | undefined>();
   const [subcategory, setSubcategory] = useState<string | undefined>();
   const [subSubcategory, setSubSubcategory] = useState<string | undefined>();
   const [isProcessing, setIsProcessing] = useState(false);
+  const setProcessingInStore = useExtractionStore(
+    (state) => state.setIsProcessing,
+  );
   const [currentStep, setCurrentStep] = useState(0);
   const processingIntervalRef = useRef<number | null>(null);
   const setBatchResult = useExtractionStore((state) => state.setBatchResult);
+
+  const { category: storedCategoryKey, name: storedCategoryName } =
+    useUserCategory();
 
   const { toast } = useToast();
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -116,9 +127,9 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
 
   const { setCategoryFromSelection, resetCategory } = useUserCategory();
 
-  // Persist mapped category key to store.
-  // If a sub-subcategory is selected, it takes precedence.
+  // Persist mapped category key to store (only when not locked to current category).
   useEffect(() => {
+    if (lockToCurrentCategory) return;
     if (subSubcategory) {
       setCategoryFromSelection(subSubcategory, "subSubcategory");
       return;
@@ -128,7 +139,13 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
       return;
     }
     resetCategory();
-  }, [subcategory, subSubcategory, setCategoryFromSelection, resetCategory]);
+  }, [
+    lockToCurrentCategory,
+    subcategory,
+    subSubcategory,
+    setCategoryFromSelection,
+    resetCategory,
+  ]);
 
   // Cycle through processing steps while API call is in progress
   useEffect(() => {
@@ -155,32 +172,57 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
 
   const uploadToBackend = useCallback(
     async (files: File[]) => {
-      if (!category || !subcategory) {
-        setIsProcessing(false);
-        return;
-      }
+      const effectiveCategoryKey = lockToCurrentCategory
+        ? storedCategoryKey
+        : subSubcategory &&
+            hasSubSubcategories(category ?? "", subcategory ?? "")
+          ? mapSelectionToCategoryKey(subSubcategory, "subSubcategory")
+          : subcategory
+            ? mapSelectionToCategoryKey(subcategory, "subcategory")
+            : null;
 
-      // Check if sub-subcategory is required
-      const requiresSubSubcategory = hasSubSubcategories(category, subcategory);
-      if (requiresSubSubcategory && !subSubcategory) {
+      if (!effectiveCategoryKey) {
         setIsProcessing(false);
+        setProcessingInStore(false);
         toast({
-          title: "Select sub-subcategory",
-          description:
-            "Please choose a sub-subcategory before uploading files.",
+          title: lockToCurrentCategory
+            ? "No category set"
+            : "Select category first",
+          description: lockToCurrentCategory
+            ? "Start a new session and upload a document to set a category first."
+            : "Please choose a category and subcategory before uploading files.",
           variant: "destructive",
         });
         return;
       }
 
+      if (!lockToCurrentCategory && (!category || !subcategory)) {
+        setIsProcessing(false);
+        setProcessingInStore(false);
+        return;
+      }
+
+      if (!lockToCurrentCategory) {
+        const requiresSubSubcategory = hasSubSubcategories(
+          category!,
+          subcategory!,
+        );
+        if (requiresSubSubcategory && !subSubcategory) {
+          setIsProcessing(false);
+          setProcessingInStore(false);
+          toast({
+            title: "Select sub-subcategory",
+            description:
+              "Please choose a sub-subcategory before uploading files.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       const formData = new FormData();
 
-      const mappedCategory =
-        subSubcategory && hasSubSubcategories(category, subcategory)
-          ? mapSelectionToCategoryKey(subSubcategory, "subSubcategory")
-          : mapSelectionToCategoryKey(subcategory, "subcategory");
-
-      formData.append("category", mappedCategory);
+      formData.append("category", effectiveCategoryKey);
       files.forEach((file) => {
         formData.append("files", file);
       });
@@ -194,6 +236,7 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
 
         if (!response.ok) {
           setIsProcessing(false);
+          setProcessingInStore(false);
           throw new Error("Upload failed");
         }
 
@@ -223,13 +266,16 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
           // Set processing to false after successful response
           setTimeout(() => {
             setIsProcessing(false);
+            setProcessingInStore(false);
           }, 600);
         } else {
           setIsProcessing(false);
+          setProcessingInStore(false);
         }
       } catch (error) {
         console.error("Upload error:", error);
         setIsProcessing(false);
+        setProcessingInStore(false);
         toast({
           title: "Upload failed",
           description:
@@ -238,7 +284,16 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
         });
       }
     },
-    [category, setBatchResult, subcategory, subSubcategory, toast],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      category,
+      lockToCurrentCategory,
+      setBatchResult,
+      storedCategoryKey,
+      subcategory,
+      subSubcategory,
+      toast,
+    ],
   );
 
   const simulateUpload = useCallback(
@@ -252,10 +307,10 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
         pageCount: Math.floor(Math.random() * 20) + 1,
         status: "uploading",
         progress: 0,
-        category,
-        subcategory,
-        subSubcategory,
-        file: file, // Store file object for preview
+        category: lockToCurrentCategory ? storedCategoryKey : category,
+        subcategory: lockToCurrentCategory ? storedCategoryName : subcategory,
+        subSubcategory: lockToCurrentCategory ? undefined : subSubcategory,
+        file: file,
       };
 
       setUploadingFiles((prev) => [...prev, doc]);
@@ -303,28 +358,55 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
         );
       }, 200);
     },
-    [category, onDocumentUpload, subcategory, subSubcategory],
+    [
+      category,
+      lockToCurrentCategory,
+      onDocumentUpload,
+      storedCategoryKey,
+      storedCategoryName,
+      subcategory,
+      subSubcategory,
+    ],
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      if (!category || !subcategory) {
+      if (lockToCurrentCategory) {
+        if (!storedCategoryKey) return;
+      } else if (!category || !subcategory) {
         return;
       }
       const files = Array.from(e.dataTransfer.files);
-      // Start API call immediately - don't wait for progress simulation
       setIsProcessing(true);
+      setProcessingInStore(true);
       uploadToBackend(files);
-      // Start progress simulation in parallel
       files.forEach(simulateUpload);
     },
-    [category, subcategory, simulateUpload, uploadToBackend],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      category,
+      lockToCurrentCategory,
+      simulateUpload,
+      storedCategoryKey,
+      subcategory,
+      uploadToBackend,
+    ],
   );
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    if (!category || !subcategory) {
+    if (lockToCurrentCategory) {
+      if (!storedCategoryKey) {
+        toast({
+          title: "No category set",
+          description:
+            "Start a new session and upload a document to set a category first.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else if (!category || !subcategory) {
       toast({
         title: "Select category first",
         description:
@@ -532,117 +614,131 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
             {/* Decorative gradient */}
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-emerald/5 pointer-events-none" />
 
-            {/* Category Selector (kept inside upload card to avoid extra scrolling) */}
+            {/* Category Selector: locked (add mode) or editable (new session) */}
             <div className="relative mb-4 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm p-4">
-              <div
-                className={cn(
-                  "grid gap-4",
-                  category &&
-                    subcategory &&
-                    hasSubSubcategories(category, subcategory)
-                    ? "md:grid-cols-3"
-                    : "md:grid-cols-2",
-                )}
-              >
+              {lockToCurrentCategory ? (
                 <div className="space-y-2">
-                  <Label htmlFor="document-category">Category</Label>
-                  <Select
-                    value={category}
-                    onValueChange={(value) => {
-                      setCategory(value);
-                      setSubcategory(undefined);
-                    }}
-                  >
-                    <SelectTrigger
-                      id="document-category"
-                      className="bg-background/70"
-                    >
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.keys(CATEGORY_OPTIONS).map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Category (fixed for this session)</Label>
+                  {storedCategoryKey ? (
+                    <p className="text-sm font-medium text-foreground py-2 px-3 rounded-lg bg-muted/60">
+                      {storedCategoryName || storedCategoryKey}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-destructive py-2">
+                      No category set. Start a new session to choose a category.
+                    </p>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="document-subcategory">Subcategory</Label>
-                  <Select
-                    value={subcategory}
-                    onValueChange={setSubcategory}
-                    disabled={!category}
-                  >
-                    <SelectTrigger
-                      id="document-subcategory"
-                      className={cn(
-                        "bg-background/70",
-                        !category && "opacity-70 cursor-not-allowed",
-                      )}
+              ) : (
+                <div
+                  className={cn(
+                    "grid gap-4",
+                    category &&
+                      subcategory &&
+                      hasSubSubcategories(category, subcategory)
+                      ? "md:grid-cols-3"
+                      : "md:grid-cols-2",
+                  )}
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="document-category">Category</Label>
+                    <Select
+                      value={category}
+                      onValueChange={(value) => {
+                        setCategory(value);
+                        setSubcategory(undefined);
+                      }}
                     >
-                      <SelectValue
-                        placeholder={
-                          category
-                            ? "Select a subcategory"
-                            : "Select a category first"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {category &&
-                        getSubcategories(category).map((sub) => (
-                          <SelectItem key={sub} value={sub}>
-                            {sub}
+                      <SelectTrigger
+                        id="document-category"
+                        className="bg-background/70"
+                      >
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(CATEGORY_OPTIONS).map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Sub-subcategory - only shown when subcategory has sub-subcategories */}
-                {category &&
-                  subcategory &&
-                  hasSubSubcategories(category, subcategory) && (
-                    <div className="space-y-2">
-                      <Label htmlFor="document-sub-subcategory">
-                        Sub-subcategory
-                      </Label>
-                      <Select
-                        value={subSubcategory}
-                        onValueChange={setSubSubcategory}
-                        disabled={!subcategory}
+                  <div className="space-y-2">
+                    <Label htmlFor="document-subcategory">Subcategory</Label>
+                    <Select
+                      value={subcategory}
+                      onValueChange={setSubcategory}
+                      disabled={!category}
+                    >
+                      <SelectTrigger
+                        id="document-subcategory"
+                        className={cn(
+                          "bg-background/70",
+                          !category && "opacity-70 cursor-not-allowed",
+                        )}
                       >
-                        <SelectTrigger
-                          id="document-sub-subcategory"
-                          className={cn(
-                            "bg-background/70",
-                            !subcategory && "opacity-70 cursor-not-allowed",
-                          )}
+                        <SelectValue
+                          placeholder={
+                            category
+                              ? "Select a subcategory"
+                              : "Select a category first"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {category &&
+                          getSubcategories(category).map((sub) => (
+                            <SelectItem key={sub} value={sub}>
+                              {sub}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {category &&
+                    subcategory &&
+                    hasSubSubcategories(category, subcategory) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="document-sub-subcategory">
+                          Sub-subcategory
+                        </Label>
+                        <Select
+                          value={subSubcategory}
+                          onValueChange={setSubSubcategory}
+                          disabled={!subcategory}
                         >
-                          <SelectValue
-                            placeholder={
-                              subcategory
-                                ? "Select a sub-subcategory"
-                                : "Select a subcategory first"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {getSubSubcategories(category, subcategory)?.map(
-                            (subSub) => (
-                              <SelectItem key={subSub} value={subSub}>
-                                {subSub}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-              </div>
+                          <SelectTrigger
+                            id="document-sub-subcategory"
+                            className={cn(
+                              "bg-background/70",
+                              !subcategory && "opacity-70 cursor-not-allowed",
+                            )}
+                          >
+                            <SelectValue
+                              placeholder={
+                                subcategory
+                                  ? "Select a sub-subcategory"
+                                  : "Select a subcategory first"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getSubSubcategories(category, subcategory)?.map(
+                              (subSub) => (
+                                <SelectItem key={subSub} value={subSub}>
+                                  {subSub}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                </div>
+              )}
             </div>
 
             <div className="relative flex flex-col items-center justify-center gap-4 py-4">
@@ -667,8 +763,9 @@ const DocumentUpload = ({ onDocumentUpload }: DocumentUploadProps) => {
                   {isDragging ? "Drop your document here" : "Upload Document"}
                 </h3>
                 <p className="text-muted-foreground max-w-sm text-sm">
-                  Drag and drop your PDF or image files here, or click to
-                  browse. Choose category and subcategory first.
+                  {lockToCurrentCategory && storedCategoryKey
+                    ? "Drag and drop or browse to add more documents for the same category."
+                    : "Drag and drop your PDF or image files here, or click to browse. Choose category and subcategory first."}
                 </p>
               </div>
 

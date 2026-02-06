@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { FileText, Code, Copy, Check, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,14 +26,84 @@ const ExtractedDataPanel = ({
     selectedFilename ? state.documentsByFilename[selectedFilename] : undefined,
   );
   const sampleRawHtml = selectedDocument?.html ?? "";
+  const jsonData: Record<string, unknown> = selectedDocument?.json ?? {};
+
+  // Process layout blocks for better formatting
+  const processedContent = React.useMemo(() => {
+    const firstPage = selectedDocument?.pages?.[0];
+    if (
+      !firstPage ||
+      typeof firstPage !== "object" ||
+      !("layout_blocks" in firstPage)
+    ) {
+      return {
+        html: selectedDocument?.html ?? "",
+        structuredFields: [],
+      };
+    }
+
+    const layoutBlocks = (firstPage as Record<string, unknown>)
+      .layout_blocks as Array<{
+      bbox: [number, number, number, number];
+      label: string;
+      content: string;
+    }>;
+
+    // Sort blocks by vertical position (top to bottom), then left to right
+    const sortedBlocks = layoutBlocks.sort((a, b) => {
+      const [, aY] = a.bbox;
+      const [, bY] = b.bbox;
+      if (Math.abs(aY - bY) < 50) {
+        // Same row
+        return a.bbox[0] - b.bbox[0]; // Sort by x position
+      }
+      return aY - bY; // Sort by y position
+    });
+
+    // Filter out image blocks and empty content
+    const filteredBlocks = sortedBlocks.filter(
+      (block) =>
+        block.label !== "Image" &&
+        block.content &&
+        block.content.trim() &&
+        !block.content.includes("img alt=") &&
+        !block.content.includes("<img"),
+    );
+
+    // Group blocks by type for structured data
+    const structuredFields = filteredBlocks.map((block, index) => ({
+      id: `field-${index}`,
+      label: block.label
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (l) => l.toUpperCase()),
+      value: block.content.replace(/<[^>]*>/g, "").trim(),
+      type: block.label,
+      bbox: block.bbox,
+    }));
+
+    // Create cleaned HTML content
+    const cleanHtml = filteredBlocks.map((block) => block.content).join("\n\n");
+
+    return {
+      html: cleanHtml,
+      structuredFields,
+    };
+  }, [selectedDocument]);
 
   const structuredData: {
     field: string;
     value: string;
     region: { x: number; y: number; width: number; height: number };
-  }[] = [];
-
-  const jsonData: Record<string, unknown> = selectedDocument?.json ?? {};
+  }[] = processedContent.structuredFields.map((field) => ({
+    field: field.label,
+    value: field.value,
+    region: {
+      x: field.bbox[0],
+      y: field.bbox[1],
+      width: field.bbox[2] - field.bbox[0],
+      height: field.bbox[3] - field.bbox[1],
+    },
+  }));
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -61,6 +131,10 @@ const ExtractedDataPanel = ({
               <TabsTrigger value="raw" className="h-6 text-xs gap-1.5">
                 <FileText className="w-3 h-3" />
                 Raw
+              </TabsTrigger>
+              <TabsTrigger value="structured" className="h-6 text-xs gap-1.5">
+                <Search className="w-3 h-3" />
+                Structured
               </TabsTrigger>
               <TabsTrigger value="json" className="h-6 text-xs gap-1.5">
                 <Code className="w-3 h-3" />
@@ -90,7 +164,9 @@ const ExtractedDataPanel = ({
                 variant="ghost"
                 size="sm"
                 className="absolute right-2 top-2"
-                onClick={() => handleCopy(sampleRawHtml, "raw")}
+                onClick={() =>
+                  handleCopy(processedContent.html || sampleRawHtml, "raw")
+                }
               >
                 {copiedField === "raw" ? (
                   <Check className="w-4 h-4 text-emerald" />
@@ -99,14 +175,13 @@ const ExtractedDataPanel = ({
                 )}
               </Button>
               <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
-                {sampleRawHtml ? (
+                {processedContent.html || sampleRawHtml ? (
                   <div
-                    className="prose prose-sm prose-slate max-w-none 
+                    className="prose prose-sm prose-slate max-w-none
                       prose-headings:text-foreground prose-headings:font-semibold
                       prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3
                       prose-strong:text-foreground prose-strong:font-semibold
                       prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-                      prose-img:rounded-lg prose-img:shadow-md prose-img:my-4 prose-img:max-w-full prose-img:h-auto
                       prose-table:w-full prose-table:border-collapse prose-table:my-4
                       prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground
                       prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground
@@ -115,20 +190,15 @@ const ExtractedDataPanel = ({
                       prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
                       prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
                       prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-                      [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
-                      [&>img]:max-w-full [&>img]:h-auto [&>img]:rounded-lg [&>img]:shadow-sm [&>img]:my-4
-                      [&>table]:w-full [&>table]:border-collapse [&>table]:my-4 [&>table]:border [&>table]:border-border [&>table]:rounded-lg [&>table]:overflow-hidden
-                      [&>table>thead]:bg-muted
-                      [&>table>tbody>tr]:border-t [&>table>tbody>tr]:border-border
-                      [&>table>tbody>tr:hover]:bg-muted/50
-                      [&>table>th]:px-4 [&>table>th]:py-2 [&>table>th]:text-left [&>table>th]:font-semibold [&>table>th]:text-sm
-                      [&>table>td]:px-4 [&>table>td]:py-2 [&>table>td]:text-sm"
-                    dangerouslySetInnerHTML={{ __html: sampleRawHtml }}
+                      [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm"
+                    dangerouslySetInnerHTML={{
+                      __html: processedContent.html || sampleRawHtml,
+                    }}
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No HTML content available. Connect your extraction pipeline
-                    to display content here.
+                    No content available. Upload a document to see extracted
+                    data here.
                   </p>
                 )}
               </div>
@@ -198,9 +268,11 @@ const ExtractedDataPanel = ({
                 <Copy className="w-4 h-4" />
               )}
             </Button>
-            <pre className="p-4 rounded-xl bg-secondary text-secondary-foreground text-sm overflow-x-auto font-mono">
-              <code>{JSON.stringify(jsonData, null, 2)}</code>
-            </pre>
+            <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
+              <pre className="text-sm overflow-x-auto font-mono text-foreground">
+                <code>{JSON.stringify(jsonData, null, 2)}</code>
+              </pre>
+            </div>
           </div>
         )}
       </div>
