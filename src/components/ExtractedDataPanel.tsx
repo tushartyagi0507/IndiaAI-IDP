@@ -71,14 +71,54 @@ const ExtractedDataPanel = ({
       firstPage: selectedDocument?.pages?.[0],
     });
 
-    const firstPage = selectedDocument?.pages?.[0];
-    if (
-      !firstPage ||
-      typeof firstPage !== "object" ||
-      !("layout_blocks" in firstPage)
-    ) {
+    const pages = selectedDocument?.pages;
+    if (!pages || !Array.isArray(pages) || pages.length === 0) {
+      console.log("[ExtractedDataPanel] No pages found, using raw HTML");
+      // Strip all image tags from HTML
+      const htmlWithoutImages = (selectedDocument?.html ?? "")
+        .replace(/<img[^>]*>/gi, "")
+        .replace(/!\[.*?\]\(.*?\)/g, ""); // Remove markdown images
+
+      return {
+        html: htmlWithoutImages,
+        structuredFields: [],
+      };
+    }
+
+    // Collect all layout blocks from all pages
+    const allLayoutBlocks: Array<{
+      bbox: [number, number, number, number];
+      label: string;
+      content: string;
+      pageIndex: number;
+    }> = [];
+
+    pages.forEach((page, pageIndex) => {
+      if (
+        page &&
+        typeof page === "object" &&
+        "layout_blocks" in page &&
+        Array.isArray(page.layout_blocks)
+      ) {
+        const pageBlocks = page.layout_blocks as Array<{
+          bbox: [number, number, number, number];
+          label: string;
+          content: string;
+        }>;
+
+        // Add page index to each block for sorting
+        pageBlocks.forEach((block) => {
+          allLayoutBlocks.push({
+            ...block,
+            pageIndex,
+          });
+        });
+      }
+    });
+
+    if (allLayoutBlocks.length === 0) {
       console.log(
-        "[ExtractedDataPanel] No layout_blocks found, using raw HTML",
+        "[ExtractedDataPanel] No layout_blocks found across all pages, using raw HTML",
       );
       // Strip all image tags from HTML
       const htmlWithoutImages = (selectedDocument?.html ?? "")
@@ -91,20 +131,20 @@ const ExtractedDataPanel = ({
       };
     }
 
-    const layoutBlocks = (firstPage as Record<string, unknown>)
-      .layout_blocks as Array<{
-      bbox: [number, number, number, number];
-      label: string;
-      content: string;
-    }>;
-
-    console.log("[ExtractedDataPanel] Found layout_blocks:", {
-      count: layoutBlocks.length,
-      labels: layoutBlocks.map((b) => b.label),
+    console.log("[ExtractedDataPanel] Found layout_blocks across all pages:", {
+      totalCount: allLayoutBlocks.length,
+      pagesWithBlocks: pages.length,
+      labels: allLayoutBlocks.slice(0, 10).map((b) => b.label),
     });
 
-    // Sort blocks by vertical position (top to bottom), then left to right
-    const sortedBlocks = [...layoutBlocks].sort((a, b) => {
+    // Sort blocks by page order first, then by vertical position (top to bottom), then left to right
+    const sortedBlocks = [...allLayoutBlocks].sort((a, b) => {
+      // First sort by page index
+      if (a.pageIndex !== b.pageIndex) {
+        return a.pageIndex - b.pageIndex;
+      }
+
+      // Then sort by vertical position within the same page
       const [, aY] = a.bbox;
       const [, bY] = b.bbox;
       if (Math.abs(aY - bY) < 50) {
@@ -126,6 +166,7 @@ const ExtractedDataPanel = ({
 
     console.log("[ExtractedDataPanel] After filtering:", {
       filteredCount: filteredBlocks.length,
+      pagesProcessed: Math.max(...filteredBlocks.map((b) => b.pageIndex)) + 1,
     });
 
     // Group blocks by type for structured data
@@ -137,19 +178,21 @@ const ExtractedDataPanel = ({
       value: block.content.replace(/<[^>]*>/g, "").trim(),
       type: block.label,
       bbox: block.bbox,
+      pageIndex: block.pageIndex,
     }));
 
     console.log("[ExtractedDataPanel] Structured fields:", {
       count: structuredFields.length,
-      fields: structuredFields
-        .slice(0, 3)
-        .map((f) => ({
-          label: f.label,
-          valuePreview: f.value.substring(0, 50),
-        })),
+      pagesWithFields: [...new Set(structuredFields.map((f) => f.pageIndex))]
+        .length,
+      fields: structuredFields.slice(0, 3).map((f) => ({
+        label: f.label,
+        valuePreview: f.value.substring(0, 50),
+        page: f.pageIndex + 1,
+      })),
     });
 
-    // Create cleaned HTML content - strip all image tags
+    // Create cleaned HTML content from all pages - strip all image tags
     const cleanHtml = filteredBlocks
       .map((block) => block.content)
       .join("\n\n")
