@@ -23,10 +23,17 @@ const SummaryPanel = (_props: SummaryPanelProps) => {
   const currentDocument = useExtractionStore((state) => state.currentDocument);
   const document_id = useExtractionStore((state) => state.document_id);
 
+  // Clear summary when document changes - prevents showing stale data
   useEffect(() => {
-    console.log("Current Document:", currentDocument);
-    console.log("Document ID:", document_id);
-  }, [currentDocument, document_id]);
+    console.log("[SummaryPanel] Document changed:", {
+      documentId: document_id,
+      documentName: currentDocument?.name,
+    });
+    console.log("[SummaryPanel] Clearing previous summary");
+    setGeneratedSummary(null);
+    setIsGenerating(false);
+    setloading(false);
+  }, [document_id, currentDocument?.name]);
 
   const handleGenerateSummary = async () => {
     if (!document_id) {
@@ -134,4 +141,3 @@ const SummaryPanel = (_props: SummaryPanelProps) => {
 };
 
 export default SummaryPanel;
-

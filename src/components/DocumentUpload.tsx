@@ -12,7 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { useExtractionStore } from "@/store/extractionStore";
+import {
+  useExtractionStore,
+  type ExtractionDocument,
+} from "@/store/extractionStore";
 import useUserCategory, {
   mapSelectionToCategoryKey,
 } from "@/store/userCategory";
@@ -21,6 +24,8 @@ interface DocumentUploadProps {
   onDocumentUpload: (document: UploadedDocument) => void;
   /** When true, category is fixed to the current store category (add-to-setup mode). */
   lockToCurrentCategory?: boolean;
+  /** When true, hide the upload UI but keep WebSocket alive */
+  hideUploadUI?: boolean;
 }
 
 // Category structure: subcategory can be a string or an object with subSubcategories array
@@ -84,6 +89,7 @@ const hasSubSubcategories = (cat: string, subcat: string): boolean => {
 const DocumentUpload = ({
   onDocumentUpload,
   lockToCurrentCategory = false,
+  hideUploadUI = false,
 }: DocumentUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadedDocument[]>([]);
@@ -94,9 +100,18 @@ const DocumentUpload = ({
   const setProcessingInStore = useExtractionStore(
     (state) => state.setIsProcessing,
   );
-  const [currentStep, setCurrentStep] = useState(0);
-  const processingIntervalRef = useRef<number | null>(null);
-  const setBatchResult = useExtractionStore((state) => state.setBatchResult);
+  const wsRef = useRef<WebSocket | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
+  const batchIdRef = useRef<string | null>(null);
+  const initBatch = useExtractionStore((state) => state.initBatch);
+  const addDocument = useExtractionStore((state) => state.addDocument);
+  const setProcessingFilenameInStore = useExtractionStore(
+    (state) => state.setProcessingFilename,
+  );
+  const processingFilename = useExtractionStore(
+    (state) => state.processingFilename,
+  );
+  // completedFiles/totalFiles available in store for other components if needed
 
   const { category: storedCategoryKey, name: storedCategoryName } =
     useUserCategory();
@@ -111,14 +126,6 @@ const DocumentUpload = ({
     e.preventDefault();
     setIsDragging(false);
   }, []);
-
-  // Editable multi-step processing flow shown while waiting for API
-  const PROCESS_STEPS: string[] = [
-    "Uploading document to server",
-    "Classifying by category and subcategory",
-    "Running AI-powered extraction",
-    "Preparing structured outputs",
-  ];
 
   // Reset sub-subcategory when category or subcategory changes
   useEffect(() => {
@@ -147,31 +154,269 @@ const DocumentUpload = ({
     resetCategory,
   ]);
 
-  // Cycle through processing steps while API call is in progress
+  // Cleanup WebSocket and poll timer on unmount
   useEffect(() => {
-    if (!isProcessing) {
-      if (processingIntervalRef.current !== null) {
-        window.clearInterval(processingIntervalRef.current);
-        processingIntervalRef.current = null;
-      }
-      return;
-    }
-
-    setCurrentStep(0);
-    processingIntervalRef.current = window.setInterval(() => {
-      setCurrentStep((prev) => (prev + 1) % PROCESS_STEPS.length);
-    }, 1600);
-
     return () => {
-      if (processingIntervalRef.current !== null) {
-        window.clearInterval(processingIntervalRef.current);
-        processingIntervalRef.current = null;
+      console.log("[WS] Component unmounting, cleaning up WebSocket");
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (pollTimerRef.current !== null) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
     };
-  }, [isProcessing, PROCESS_STEPS.length]);
+  }, []);
+
+  // Track if we've shown the first document yet
+  const firstDocumentShownRef = useRef<boolean>(false);
+
+  // ---------- helpers: handle a single document_ready payload ----------
+  const handleDocumentReady = useCallback(
+    (doc: {
+      document_id: string;
+      filename: string;
+      num_pages?: number;
+      markdown?: string;
+      html?: string;
+      json?: Record<string, unknown>;
+      pages?: unknown[];
+    }) => {
+      console.log("[DocumentUpload] Document ready:", doc.filename);
+
+      addDocument({
+        filename: doc.filename,
+        documentId: doc.document_id,
+        markdown: doc.markdown ?? "",
+        html: doc.html,
+        json: doc.json,
+        pages: doc.pages,
+      } as ExtractionDocument);
+
+      setUploadingFiles((prev) => {
+        const updated = prev.map((f) =>
+          f.name === doc.filename
+            ? {
+                ...f,
+                status: "completed" as const,
+                progress: 100,
+                pageCount: doc.num_pages ?? f.pageCount,
+                backendDocumentId: doc.document_id,
+              }
+            : f,
+        );
+
+        // Notify parent that this document is ready with backend data
+        // Parent component will decide whether to auto-select it
+        const completedDoc = updated.find((f) => f.name === doc.filename);
+        if (completedDoc) {
+          onDocumentUpload(completedDoc);
+        }
+
+        // After first document is ready, close the blocking overlay IMMEDIATELY
+        // Let remaining files process in the background
+        if (!firstDocumentShownRef.current) {
+          firstDocumentShownRef.current = true;
+          console.log(
+            "[DocumentUpload] First document ready, closing overlay NOW",
+          );
+          // Close overlay immediately to show results
+          setIsProcessing(false);
+          setProcessingInStore(false);
+        }
+
+        return updated;
+      });
+    },
+    [addDocument, onDocumentUpload, setProcessingInStore],
+  );
+
+  const finishBatch = useCallback(() => {
+    console.log("[DocumentUpload] Batch complete, cleaning up");
+    setProcessingFilenameInStore(null);
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    batchIdRef.current = null; // Allow new uploads
+
+    // Clean up uploadingFiles and reset for next batch
+    setTimeout(() => {
+      setUploadingFiles([]);
+      firstDocumentShownRef.current = false;
+    }, 500);
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, [setProcessingFilenameInStore]);
+
+  // ---------- polling fallback ----------
+  // Polls GET /batch/{batch_id}/status every few seconds so that even if WS
+  // events are missed (race condition, dropped connection, etc.), the UI
+  // still discovers completed documents and the batch-complete state.
+  const startPolling = useCallback(
+    (batchId: string, expectedTotal: number) => {
+      if (pollTimerRef.current !== null) return; // already polling
+      const alreadySeen = new Set<string>();
+
+      pollTimerRef.current = window.setInterval(async () => {
+        try {
+          console.log("[Polling] Fetching status for batch:", batchId);
+          const res = await fetch(
+            `http://localhost:8003/batch/${batchId}/status`,
+          );
+
+          if (!res.ok) {
+            console.error(
+              "[Polling] Status request failed:",
+              res.status,
+              res.statusText,
+            );
+            return;
+          }
+
+          const data = (await res.json()) as {
+            completed_files: number;
+            documents: {
+              document_id: string;
+              filename: string;
+              num_pages?: number;
+              markdown?: string;
+              html?: string;
+              json?: Record<string, unknown>;
+              pages?: unknown[];
+            }[];
+          };
+
+          console.log("[Polling] Status response:", {
+            completed: data.completed_files,
+            total: expectedTotal,
+            documentCount: data.documents.length,
+          });
+
+          // Ingest any documents we haven't seen yet
+          for (const doc of data.documents) {
+            if (!alreadySeen.has(doc.document_id)) {
+              alreadySeen.add(doc.document_id);
+              console.log("[Polling] New document from polling:", doc.filename);
+              handleDocumentReady(doc);
+            }
+          }
+
+          // If all files are done, finish the batch
+          if (data.completed_files >= expectedTotal) {
+            console.log("[Polling] All files complete, finishing batch");
+            finishBatch();
+          }
+        } catch (error) {
+          // Ignore transient fetch errors — we'll retry on the next tick
+          console.error("[Polling] Error:", error);
+        }
+      }, 3000);
+    },
+    [handleDocumentReady, finishBatch],
+  );
+
+  // ---------- WebSocket connection ----------
+  const connectWebSocket = useCallback(
+    (batchId: string, expectedTotal: number) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        return;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      batchIdRef.current = batchId;
+      const wsUrl = `ws://localhost:8003/ws/progress/${batchId}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("[WS] Connected to batch", batchId);
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("[WS] Received event:", data.event, data);
+
+          switch (data.event) {
+            case "processing_started":
+              console.log("[WS] Processing started:", data.filename);
+              setProcessingFilenameInStore(data.filename);
+              setUploadingFiles((prev) =>
+                prev.map((f) =>
+                  f.name === data.filename
+                    ? { ...f, status: "processing" as const }
+                    : f,
+                ),
+              );
+              break;
+
+            case "document_ready":
+              console.log("[WS] Document ready:", data.document.filename);
+              handleDocumentReady(data.document);
+              break;
+
+            case "document_failed":
+              console.log("[WS] Document failed:", data.filename);
+              setUploadingFiles((prev) =>
+                prev.map((f) =>
+                  f.name === data.filename
+                    ? { ...f, status: "error" as const }
+                    : f,
+                ),
+              );
+              toast({
+                title: `Failed: ${data.filename}`,
+                description: data.error || "Processing failed",
+                variant: "destructive",
+              });
+              break;
+
+            case "batch_complete":
+              console.log("[WS] Batch complete");
+              finishBatch();
+              break;
+          }
+        } catch (err) {
+          console.error("WS message parse error:", err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      ws.onclose = (event) => {
+        console.log("[WS] Connection closed:", event.code, event.reason);
+      };
+
+      // Start the polling fallback alongside WebSocket.
+      // If WS delivers everything, polling will just see the same docs and
+      // stop when completed_files >= expectedTotal. If WS misses events,
+      // polling will pick them up.
+      startPolling(batchId, expectedTotal);
+    },
+    [
+      handleDocumentReady,
+      finishBatch,
+      setProcessingFilenameInStore,
+      startPolling,
+      toast,
+    ],
+  );
 
   const uploadToBackend = useCallback(
     async (files: File[]) => {
+      if (batchIdRef.current) {
+        return;
+      }
+
       const effectiveCategoryKey = lockToCurrentCategory
         ? storedCategoryKey
         : subSubcategory &&
@@ -228,52 +473,58 @@ const DocumentUpload = ({
       });
 
       try {
-        // API call fires immediately - processing state already set before this function is called
+        console.log(
+          "[DocumentUpload] Starting upload for",
+          files.length,
+          "files",
+        );
+        const uploadStartTime = Date.now();
+
+        // POST returns immediately — background task handles OCR
         const response = await fetch("http://localhost:8003/upload/ocr", {
           method: "POST",
           body: formData,
         });
 
+        const uploadDuration = Date.now() - uploadStartTime;
+        console.log(
+          "[DocumentUpload] Upload POST completed in",
+          uploadDuration,
+          "ms",
+        );
+
         if (!response.ok) {
+          console.error(
+            "[DocumentUpload] Upload failed:",
+            response.status,
+            response.statusText,
+          );
           setIsProcessing(false);
           setProcessingInStore(false);
           throw new Error("Upload failed");
         }
 
         const payload = (await response.json()) as {
-          batch_id?: string;
-          documents?: {
-            filename: string;
-            document_id: string;
-            markdown?: string;
-            html?: string;
-            json?: Record<string, unknown>;
-            pages?: unknown[];
-          }[];
+          batch_id: string;
+          total_files: number;
+          filenames: string[];
         };
-        if (payload?.batch_id && Array.isArray(payload?.documents)) {
-          setBatchResult({
-            batchId: payload.batch_id,
-            documents: payload.documents.map((doc) => ({
-              filename: doc.filename,
-              documentId: doc.document_id,
-              markdown: doc.markdown ?? "",
-              html: doc.html,
-              json: doc.json,
-              pages: doc.pages,
-            })),
-          });
-          // Set processing to false after successful response
-          setTimeout(() => {
-            setIsProcessing(false);
-            setProcessingInStore(false);
-          }, 600);
-        } else {
+
+        console.log("[DocumentUpload] Received batch_id:", payload.batch_id);
+
+        if (!payload?.batch_id) {
           setIsProcessing(false);
           setProcessingInStore(false);
+          return;
         }
+
+        // Initialize batch in the store (streaming mode)
+        initBatch(payload.batch_id, payload.total_files);
+
+        // Connect to WebSocket + start polling fallback
+        connectWebSocket(payload.batch_id, payload.total_files);
       } catch (error) {
-        console.error("Upload error:", error);
+        console.error("[DocumentUpload] Upload error:", error);
         setIsProcessing(false);
         setProcessingInStore(false);
         toast({
@@ -287,8 +538,9 @@ const DocumentUpload = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       category,
+      connectWebSocket,
+      initBatch,
       lockToCurrentCategory,
-      setBatchResult,
       storedCategoryKey,
       subcategory,
       subSubcategory,
@@ -304,7 +556,7 @@ const DocumentUpload = ({
         size: file.size,
         type: file.type,
         uploadedAt: new Date(),
-        pageCount: Math.floor(Math.random() * 20) + 1,
+        pageCount: 0, // Will be updated from WS document_ready
         status: "uploading",
         progress: 0,
         category: lockToCurrentCategory ? storedCategoryKey : category,
@@ -315,48 +567,42 @@ const DocumentUpload = ({
 
       setUploadingFiles((prev) => [...prev, doc]);
 
-      // Simulate upload progress
+      // Quick upload progress animation (POST returns fast with the new architecture)
       const interval = setInterval(() => {
         setUploadingFiles((prev) =>
           prev.map((d) => {
-            if (d.id === doc.id) {
+            if (d.id === doc.id && d.status === "uploading") {
               const newProgress = Math.min(
-                d.progress + Math.random() * 30,
+                d.progress + Math.random() * 40,
                 100,
               );
               if (newProgress >= 100) {
                 clearInterval(interval);
+                // Transition to "processing" — file is now in the backend OCR queue.
+                // The WebSocket document_ready event will transition it to "completed".
                 setTimeout(() => {
                   setUploadingFiles((prev) =>
                     prev.map((d) =>
                       d.id === doc.id
-                        ? { ...d, status: "processing" as const }
+                        ? { ...d, status: "processing" as const, progress: 100 }
                         : d,
                     ),
                   );
-                  setTimeout(() => {
-                    setUploadingFiles((prev) =>
-                      prev.map((d) =>
-                        d.id === doc.id
-                          ? { ...d, status: "completed" as const }
-                          : d,
-                      ),
-                    );
-                    onDocumentUpload({
-                      ...doc,
-                      status: "completed",
-                      progress: 100,
-                      file: file, // Ensure file is included
-                    });
-                  }, 1500);
-                }, 500);
+                  // Register the document in Index.tsx so it appears in the selector
+                  onDocumentUpload({
+                    ...doc,
+                    status: "processing",
+                    progress: 100,
+                    file: file,
+                  });
+                }, 300);
               }
               return { ...d, progress: newProgress };
             }
             return d;
           }),
         );
-      }, 200);
+      }, 150);
     },
     [
       category,
@@ -435,6 +681,7 @@ const DocumentUpload = ({
 
     // Start API call immediately - don't wait for progress simulation
     setIsProcessing(true);
+    setProcessingInStore(true);
     uploadToBackend(files);
     // Start progress simulation in parallel
     files.forEach(simulateUpload);
@@ -448,14 +695,10 @@ const DocumentUpload = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const removeFile = (id: string) => {
-    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
-  };
-
   return (
     <>
-      {/* Centered multi-step processing overlay with file progress - ONLY place progress is shown */}
-      {(isProcessing || uploadingFiles.length > 0) && (
+      {/* Processing overlay - only shows while FIRST file is being processed */}
+      {isProcessing && uploadingFiles.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-card border border-border/60 shadow-xl p-6 space-y-6 max-h-[90vh] overflow-y-auto">
             {/* Header */}
@@ -468,51 +711,41 @@ const DocumentUpload = ({
                   Processing your documents
                 </p>
                 <p className="text-xs text-muted-foreground/80">
-                  This may take a few moments. Please do not close the window.
+                  First file's results will appear as soon as it's ready
                 </p>
               </div>
             </div>
 
-            {/* Multi-step loader */}
-            {isProcessing && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Processing Steps
-                </p>
-                {PROCESS_STEPS.map((step, index) => {
-                  const isDone = index < currentStep;
-                  const isActive = index === currentStep;
-
-                  return (
-                    <div
-                      key={step}
-                      className={cn(
-                        "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-xs transition-all",
-                        isActive && "border-primary/60 bg-primary/5",
-                        isDone && "border-emerald/60 bg-emerald/5",
-                      )}
-                    >
-                      <div className="h-5 w-5 rounded-full flex items-center justify-center border border-border/60 bg-background shrink-0">
-                        {isDone ? (
-                          <CheckCircle className="h-3.5 w-3.5 text-emerald" />
-                        ) : isActive ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                        ) : (
-                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-                        )}
-                      </div>
-                      <p
-                        className={cn(
-                          "flex-1",
-                          isActive && "font-medium text-foreground",
-                          isDone && "text-emerald-foreground",
-                        )}
-                      >
-                        {step}
-                      </p>
-                    </div>
-                  );
-                })}
+            {/* Real-time processing progress */}
+            {isProcessing && uploadingFiles.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="font-medium">Processing Progress</span>
+                  <span>
+                    {
+                      uploadingFiles.filter((f) => f.status === "completed")
+                        .length
+                    }{" "}
+                    of {uploadingFiles.length} file
+                    {uploadingFiles.length > 1 ? "s" : ""} completed
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-primary to-emerald transition-all duration-500 ease-out"
+                    style={{
+                      width: `${uploadingFiles.length > 0 ? (uploadingFiles.filter((f) => f.status === "completed").length / uploadingFiles.length) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+                {processingFilename && (
+                  <p className="text-xs text-muted-foreground">
+                    Currently processing:{" "}
+                    <span className="font-medium text-foreground">
+                      {processingFilename}
+                    </span>
+                  </p>
+                )}
               </div>
             )}
 
@@ -570,6 +803,12 @@ const DocumentUpload = ({
                                 <span className="text-xs">Ready</span>
                               </div>
                             )}
+                            {file.status === "error" && (
+                              <div className="flex items-center gap-1.5 text-destructive">
+                                <X className="w-4 h-4" />
+                                <span className="text-xs">Failed</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -597,9 +836,30 @@ const DocumentUpload = ({
         </div>
       )}
 
+      {/* Background progress indicator for remaining files */}
+      {!isProcessing &&
+        uploadingFiles.length > 0 &&
+        uploadingFiles.some((f) => f.status === "processing") && (
+          <div className="fixed bottom-4 right-4 z-40 bg-card border border-border/60 shadow-lg rounded-lg p-4 max-w-sm">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Background Processing</p>
+                <p className="text-xs text-muted-foreground">
+                  {
+                    uploadingFiles.filter((f) => f.status === "completed")
+                      .length
+                  }{" "}
+                  of {uploadingFiles.length} files complete
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
       <div className="space-y-4">
-        {/* Upload Zone - hidden when overlay is showing */}
-        {!(isProcessing || uploadingFiles.length > 0) && (
+        {/* Upload Zone - hidden when overlay is showing or when hideUploadUI is true */}
+        {!isProcessing && !hideUploadUI && (
           <div
             className={cn(
               "relative rounded-2xl border-2 border-dashed transition-all duration-300 p-8",

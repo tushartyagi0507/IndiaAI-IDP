@@ -51,7 +51,7 @@ export const mapSelectionToCategoryKey = (
   if (v === "writing_extemity") return "writing_extremity";
 
   // PD Branch
-  if (v === "apar") return "apar";
+  if (v === "Apar") return "apar";
 
   return v; // fallback
 };

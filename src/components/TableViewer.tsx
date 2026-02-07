@@ -1,14 +1,9 @@
-import { useState, useEffect } from "react";
-import {
-  GripVertical,
-  ArrowUpDown,
-  Loader2,
-} from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { GripVertical, ArrowUpDown, Loader2, Table2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useExtractionStore } from "@/store/extractionStore";
 import { useToast } from "@/hooks/use-toast";
-
-
 
 interface FieldsResponse {
   document_id: string;
@@ -33,74 +28,77 @@ const TableViewer = () => {
   const currentDocument = useExtractionStore((state) => state.currentDocument);
   const { toast } = useToast();
 
+  // Clear table data when document changes (no API call)
   useEffect(() => {
-    const fetchDocumentFields = async () => {
-      if (!document_id || !currentDocument) {
-        setTableData({ headers: [], rows: [] });
-        return;
-      }
+    setTableData({ headers: [], rows: [] });
+  }, [document_id, currentDocument?.name]);
 
-      // Get subcategory from currentDocument
-      const subcategory =
-        currentDocument.subcategory || currentDocument.subSubcategory;
-      if (!subcategory) {
-        toast({
-          title: "Missing subcategory",
-          description:
-            "Subcategory information is not available for this document.",
-          variant: "destructive",
-        });
-        return;
-      }
+  const fetchDocumentFields = useCallback(async () => {
+    if (!document_id || !currentDocument) {
+      toast({
+        title: "No document selected",
+        description: "Please select a document first.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      setIsLoading(true);
-      try {
-        const response = await fetch(
-          `http://localhost:8003/document/${document_id}/extract`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              doc_type: subcategory,
-            }),
+    const subcategory =
+      currentDocument.subcategory || currentDocument.subSubcategory;
+    if (!subcategory) {
+      toast({
+        title: "Missing subcategory",
+        description:
+          "Subcategory information is not available for this document.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8003/document/${document_id}/extract`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            doc_type: subcategory,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch document fields: ${response.statusText}`,
         );
-
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch document fields: ${response.statusText}`,
-          );
-        }
-
-        const data: FieldsResponse = await response.json();
-
-        // Convert fields object to table format
-        const headers = Object.keys(data.fields);
-        const row = Object.values(data.fields);
-
-        setTableData({
-          headers,
-          rows: [row],
-        });
-      } catch (error) {
-        console.error("Error fetching document fields:", error);
-        toast({
-          title: "Error loading fields",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Failed to load document fields.",
-          variant: "destructive",
-        });
-        setTableData({ headers: [], rows: [] });
-      } finally {
-        setIsLoading(false);
       }
-    };
 
-    fetchDocumentFields();
+      const data: FieldsResponse = await response.json();
+
+      const headers = Object.keys(data.fields);
+      const row = Object.values(data.fields);
+
+      setTableData({
+        headers,
+        rows: [row],
+      });
+    } catch (error) {
+      console.error("Error fetching document fields:", error);
+      toast({
+        title: "Error loading fields",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to load document fields.",
+        variant: "destructive",
+      });
+      setTableData({ headers: [], rows: [] });
+    } finally {
+      setIsLoading(false);
+    }
   }, [document_id, currentDocument, toast]);
 
   const formatFieldName = (fieldName: string): string => {
@@ -118,7 +116,6 @@ const TableViewer = () => {
       setSortDirection("asc");
     }
   };
-
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -145,8 +142,20 @@ const TableViewer = () => {
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-border/50">
         <h3 className="font-display font-semibold">Extracted Tables</h3>
-        <div className="flex items-center gap-2">
-        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fetchDocumentFields()}
+          disabled={!document_id || !currentDocument || isLoading}
+          className="gap-2"
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Table2 className="w-4 h-4" />
+          )}
+          Extract
+        </Button>
       </div>
 
       <div className="overflow-x-auto scrollbar-thin">
@@ -234,7 +243,6 @@ const TableViewer = () => {
           </table>
         )}
       </div>
-
     </div>
   );
 };

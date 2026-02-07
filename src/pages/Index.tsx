@@ -468,6 +468,29 @@ const Index = () => {
   const clearResults = useExtractionStore((state) => state.clearResults);
   const isProcessing = useExtractionStore((state) => state.isProcessing);
 
+  // Debug current document
+  useEffect(() => {
+    if (currentDocument) {
+      console.log("[Index] Current document changed:", {
+        id: currentDocument.id,
+        name: currentDocument.name,
+        backendDocumentId: currentDocument.backendDocumentId,
+      });
+      console.log(
+        "[Index] Looking up in store with key:",
+        currentDocument.name,
+      );
+      console.log(
+        "[Index] Available keys in store:",
+        Object.keys(documentsByFilename),
+      );
+      console.log(
+        "[Index] Found in store:",
+        !!documentsByFilename[currentDocument.name],
+      );
+    }
+  }, [currentDocument, documentsByFilename]);
+
   // Check if we have extracted data for the current document
   const hasExtractedData = currentDocument
     ? !!documentsByFilename[currentDocument.name]
@@ -489,6 +512,13 @@ const Index = () => {
     const backendDocumentId =
       documentsByFilename[document.name]?.documentId ?? undefined;
 
+    console.log("[Index] handleDocumentUpload called:", {
+      filename: document.name,
+      backendDocumentId,
+      currentDocumentId,
+      isProcessing,
+    });
+
     setUploadedDocuments((prev) => {
       const exists = prev.some((doc) => doc.id === document.id);
 
@@ -501,6 +531,31 @@ const Index = () => {
       return [...prev, { ...document, backendDocumentId }];
     });
 
+    // Only auto-select if:
+    // 1. Not currently processing, OR
+    // 2. No document is currently selected yet
+    // This prevents jumping between documents during multi-file processing
+    // The first document in a batch will be selected, subsequent ones just registered
+    if (isProcessing && currentDocumentId !== null) {
+      // During processing, if a document is already selected, don't switch
+      // Just update the document list and backend IDs above
+      // But DO update the current document if this is the same one getting its backend ID
+      if (currentDocumentId === document.id && backendDocumentId) {
+        console.log("[Index] Updating current document with backend ID");
+        setCurrentBackendDocumentId(backendDocumentId);
+        setCurrentDocument(
+          { ...document, backendDocumentId },
+          backendDocumentId,
+        );
+      } else {
+        console.log(
+          "[Index] Skipping auto-select (already have a document selected)",
+        );
+      }
+      return;
+    }
+
+    console.log("[Index] Auto-selecting document:", document.name);
     setCurrentDocumentId(document.id);
     setCurrentBackendDocumentId(backendDocumentId ?? null);
 
@@ -594,6 +649,16 @@ const Index = () => {
       <Header />
 
       <main className="container px-4 py-4 h-[calc(100vh-72px)]">
+        {/* DocumentUpload is always mounted to keep WebSocket alive during processing */}
+        {/* It shows its own processing overlay when active */}
+        <DocumentUpload
+          onDocumentUpload={handleDocumentUpload}
+          lockToCurrentCategory={
+            isAddToCurrentSetup && uploadedDocuments.length > 0
+          }
+          hideUploadUI={!!currentDocument}
+        />
+
         {!currentDocument && (
           <div className="h-full flex flex-col justify-center">
             {/* Hero Section */}
@@ -632,16 +697,9 @@ const Index = () => {
               </div>
             )}
 
-            {/* Upload Section */}
-            <div className="max-w-3xl mx-auto w-full">
-              <DocumentUpload
-                onDocumentUpload={handleDocumentUpload}
-                lockToCurrentCategory={
-                  isAddToCurrentSetup && uploadedDocuments.length > 0
-                }
-              />
-
-              {uploadedDocuments.length > 0 && (
+            {/* Upload Section placeholder when not processing */}
+            {uploadedDocuments.length > 0 && (
+              <div className="max-w-3xl mx-auto w-full">
                 <div className="mt-6 p-4 rounded-xl bg-card border border-border/50">
                   <p className="text-sm text-muted-foreground mb-3">
                     Select from uploaded documents:
@@ -659,8 +717,8 @@ const Index = () => {
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -759,20 +817,51 @@ const Index = () => {
                       ))}
                     </div>
 
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-auto mt-4">
-                      {activeTab === "extract" && (
+                    {/* Tab Content: render all panels but hide inactive so state persists when switching tabs */}
+                    <div className="flex-1 overflow-auto mt-4 min-h-0">
+                      <div
+                        className={cn(
+                          "h-full",
+                          activeTab !== "extract" && "hidden",
+                        )}
+                      >
                         <ExtractedDataPanel
                           onFieldHover={handleFieldHover}
                           selectedFilename={currentDocument?.name || null}
                         />
-                      )}
-                      {activeTab === "summary" && (
+                      </div>
+                      <div
+                        className={cn(
+                          "h-full",
+                          activeTab !== "summary" && "hidden",
+                        )}
+                      >
                         <SummaryPanel onCitationClick={handleCitationClick} />
-                      )}
-                      {activeTab === "tables" && <TableViewer />}
-                      {activeTab === "language" && <MultiLanguagePanel />}
-                      {activeTab === "export" && <ExportPanel />}
+                      </div>
+                      <div
+                        className={cn(
+                          "h-full",
+                          activeTab !== "tables" && "hidden",
+                        )}
+                      >
+                        <TableViewer />
+                      </div>
+                      <div
+                        className={cn(
+                          "h-full",
+                          activeTab !== "language" && "hidden",
+                        )}
+                      >
+                        <MultiLanguagePanel />
+                      </div>
+                      <div
+                        className={cn(
+                          "h-full",
+                          activeTab !== "export" && "hidden",
+                        )}
+                      >
+                        <ExportPanel />
+                      </div>
                     </div>
                   </>
                 )}

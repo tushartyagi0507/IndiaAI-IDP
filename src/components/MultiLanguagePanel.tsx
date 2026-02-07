@@ -298,26 +298,20 @@ const MultiLanguagePanel = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (
-      (viewMode === "translated" || viewMode === "sideBySide") &&
-      document_id &&
-      !translatedText &&
-      !isTranslating
-    ) {
-      fetchTranslation();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, document_id]);
+  // No auto-fetch on tab switch; translation runs only when user clicks Translate
 
   useEffect(() => {
-    console.log("document_id", document_id);
+    console.log("[MultiLanguagePanel] Document changed:", {
+      documentId: document_id,
+      documentName: currentDocument?.name,
+    });
+    console.log("[MultiLanguagePanel] Clearing previous translation");
     setViewMode("translated");
     setTranslatedText(null);
     setTranslateError(null);
     setIsTranslating(false);
     abortControllerRef.current?.abort();
-  }, [document_id]);
+  }, [document_id, currentDocument?.name]);
 
   const fetchTranslation = async () => {
     if (!document_id) {
@@ -365,7 +359,8 @@ const MultiLanguagePanel = () => {
         "";
 
       setTranslatedText(translated || null);
-    } catch (error: any) {// eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      // eslint-disable-line @typescript-eslint/no-explicit-any
       if (error.name !== "AbortError") {
         const message =
           error instanceof Error
@@ -430,10 +425,11 @@ const MultiLanguagePanel = () => {
     text: string | null,
     isLoading?: boolean,
     ref?: React.RefObject<HTMLDivElement>,
+    proseClassName?: string,
   ) => {
     if (isLoading) {
       return (
-        <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin mr-2" />
           Loading...
         </div>
@@ -442,31 +438,21 @@ const MultiLanguagePanel = () => {
 
     if (!text) {
       return (
-        <p className="text-sm text-muted-foreground text-center py-6">
-          No content available yet.
-        </p>
+        <div className="text-center py-8 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            No content available yet.
+          </p>
+        </div>
       );
     }
 
+    const proseClasses =
+      proseClassName ||
+      "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
     return (
       <div
         ref={ref}
-        className="h-[420px] overflow-y-auto overflow-x-hidden pr-2 
-          prose prose-sm prose-slate max-w-none
-          prose-headings:text-foreground prose-headings:font-semibold
-          prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3
-          prose-strong:text-foreground prose-strong:font-semibold
-          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-          prose-table:w-full prose-table:border-collapse prose-table:my-4
-          prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground
-          prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground
-          prose-ul:my-3 prose-ol:my-3
-          prose-li:text-foreground prose-li:my-1
-          prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
-          prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
-          prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-          [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
-          break-words whitespace-normal"
+        className={proseClasses}
         dangerouslySetInnerHTML={{ __html: text }}
       />
     );
@@ -476,10 +462,11 @@ const MultiLanguagePanel = () => {
     text: string | null,
     isLoading?: boolean,
     ref?: React.RefObject<HTMLDivElement>,
+    proseClassName?: string,
   ) => {
     if (isLoading) {
       return (
-        <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin mr-2" />
           Translating...
         </div>
@@ -488,146 +475,153 @@ const MultiLanguagePanel = () => {
 
     if (!text) {
       return (
-        <p className="text-sm text-muted-foreground text-center py-6">
-          No content available yet.
-        </p>
+        <div className="text-center py-8 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            No content available yet.
+          </p>
+        </div>
       );
     }
 
+    const proseClasses =
+      proseClassName ||
+      "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
     return (
-      <div
-        ref={ref}
-        className="h-[420px] overflow-y-auto overflow-x-hidden pr-2 
-          prose prose-sm prose-slate max-w-none
-          prose-headings:text-foreground prose-headings:font-semibold
-          prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3
-          prose-strong:text-foreground prose-strong:font-semibold
-          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-          prose-table:w-full prose-table:border-collapse prose-table:my-4
-          prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground
-          prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground
-          prose-ul:my-3 prose-ol:my-3
-          prose-li:text-foreground prose-li:my-1
-          prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
-          prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
-          prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-          [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
-          break-words whitespace-normal"
-      >
+      <div ref={ref} className={proseClasses}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
     );
   };
 
+  const proseClasses =
+    "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
+
   return (
-    <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-border/50">
-        <h3 className="font-display font-semibold flex items-center gap-2">
-          <Languages className="w-4 h-4 text-primary" />
-          Multi-Language View
-        </h3>
-
-        <div className="flex items-center gap-2">
-          {translatedText && viewMode !== "original" && (
+    <div className="h-full flex flex-col bg-card rounded-2xl border border-border/50 overflow-hidden max-h-full">
+      <div className="p-4 border-b border-border/50">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display font-semibold flex items-center gap-2">
+            <Languages className="w-4 h-4 text-primary" />
+            Multi-Language View
+          </h3>
+          <div className="flex items-center gap-2">
             <button
-              onClick={downloadPDF}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition"
+              onClick={() => void fetchTranslation()}
+              disabled={!document_id || isTranslating}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50 disabled:pointer-events-none"
             >
-              <Download className="w-4 h-4" />
-              PDF
-            </button>
-          )}
-
-          <div className="flex items-center rounded-lg border border-border/50 p-1">
-            <button
-              onClick={() => setViewMode("original")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                viewMode === "original"
-                  ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
+              {isTranslating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Languages className="w-4 h-4" />
               )}
-            >
-              Original
+              Translate
             </button>
-
-            <button
-              onClick={() => {
-                setViewMode("translated");
-                if (!translatedText && !isTranslating) {
-                  void fetchTranslation();
-                }
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                viewMode === "translated"
-                  ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              English
-            </button>
-
-            <button
-              onClick={() => {
-                setViewMode("sideBySide");
-                if (!translatedText && !isTranslating) {
-                  void fetchTranslation();
-                }
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5",
-                viewMode === "sideBySide"
-                  ? "bg-navy text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              Side by Side
-            </button>
+            {translatedText && viewMode !== "original" && (
+              <button
+                onClick={downloadPDF}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition"
+              >
+                <Download className="w-4 h-4" />
+                PDF
+              </button>
+            )}
+            <div className="flex items-center rounded-lg border border-border/50 p-1">
+              <button
+                onClick={() => setViewMode("original")}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                  viewMode === "original"
+                    ? "bg-navy text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Original
+              </button>
+              <button
+                onClick={() => setViewMode("translated")}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                  viewMode === "translated"
+                    ? "bg-navy text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                English
+              </button>
+              <button
+                onClick={() => setViewMode("sideBySide")}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5",
+                  viewMode === "sideBySide"
+                    ? "bg-navy text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                Side by Side
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="flex-1 overflow-auto p-4 scrollbar-thin">
         {viewMode === "original" && (
-          <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">
-            {renderHTML(originalText)}
+          <div className="space-y-4">
+            <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
+              {renderHTML(originalText, false, undefined, proseClasses)}
+            </div>
           </div>
         )}
 
         {viewMode === "translated" && (
-          <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">
-            {translateError ? (
-              <p className="text-sm text-destructive text-center py-6">
-                {translateError}
-              </p>
-            ) : (
-              renderMarkdown(translatedText, isTranslating, translatedRef)
-            )}
-          </div>
-        )}
-
-        {viewMode === "sideBySide" && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">
-              <p className="text-xs font-medium text-muted-foreground mb-2">
-                Original
-              </p>
-              {renderHTML(originalText)}
-            </div>
-
-            <div className="rounded-xl border border-border/50 bg-muted/20 p-4 min-w-0">
-              <p className="text-xs font-medium text-muted-foreground mb-2">
-                English
-              </p>
+          <div className="space-y-4">
+            <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
               {translateError ? (
                 <p className="text-sm text-destructive text-center py-6">
                   {translateError}
                 </p>
               ) : (
-                renderMarkdown(translatedText, isTranslating, translatedRef)
+                renderMarkdown(
+                  translatedText,
+                  isTranslating,
+                  translatedRef,
+                  proseClasses,
+                )
               )}
+            </div>
+          </div>
+        )}
+
+        {viewMode === "sideBySide" && (
+          <div className="grid gap-4 md:grid-cols-2 min-w-0">
+            <div className="space-y-4 min-w-0">
+              <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Original
+                </p>
+                {renderHTML(originalText, false, undefined, proseClasses)}
+              </div>
+            </div>
+            <div className="space-y-4 min-w-0">
+              <div className="p-6 rounded-xl bg-muted/30 border border-border/50">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  English
+                </p>
+                {translateError ? (
+                  <p className="text-sm text-destructive text-center py-6">
+                    {translateError}
+                  </p>
+                ) : (
+                  renderMarkdown(
+                    translatedText,
+                    isTranslating,
+                    translatedRef,
+                    proseClasses,
+                  )
+                )}
+              </div>
             </div>
           </div>
         )}
