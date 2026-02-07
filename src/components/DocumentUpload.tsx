@@ -559,7 +559,7 @@ const DocumentUpload = ({
         pageCount: 0, // Will be updated from WS document_ready
         status: "uploading",
         progress: 0,
-        category: lockToCurrentCategory ? storedCategoryKey : category,
+        category: storedCategoryKey, // Always use the mapped category from store
         subcategory: lockToCurrentCategory ? storedCategoryName : subcategory,
         subSubcategory: lockToCurrentCategory ? undefined : subSubcategory,
         file: file,
@@ -605,7 +605,6 @@ const DocumentUpload = ({
       }, 150);
     },
     [
-      category,
       lockToCurrentCategory,
       onDocumentUpload,
       storedCategoryKey,

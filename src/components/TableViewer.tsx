@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useExtractionStore } from "@/store/extractionStore";
 import { useToast } from "@/hooks/use-toast";
+import useUserCategory from "@/store/userCategory";
 
 interface FieldsResponse {
   document_id: string;
@@ -27,6 +28,7 @@ const TableViewer = () => {
   const document_id = useExtractionStore((state) => state.document_id);
   const currentDocument = useExtractionStore((state) => state.currentDocument);
   const { toast } = useToast();
+  const { category } = useUserCategory();
 
   // Clear table data when document changes (no API call)
   useEffect(() => {
@@ -43,13 +45,10 @@ const TableViewer = () => {
       return;
     }
 
-    const subcategory =
-      currentDocument.subcategory || currentDocument.subSubcategory;
-    if (!subcategory) {
+    if (!category) {
       toast({
-        title: "Missing subcategory",
-        description:
-          "Subcategory information is not available for this document.",
+        title: "Missing category",
+        description: "Category information is not available for this document.",
         variant: "destructive",
       });
       return;
@@ -65,7 +64,7 @@ const TableViewer = () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            doc_type: subcategory,
+            doc_type: category,
           }),
         },
       );
@@ -99,7 +98,7 @@ const TableViewer = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [document_id, currentDocument, toast]);
+  }, [document_id, currentDocument, category, toast]);
 
   const formatFieldName = (fieldName: string): string => {
     return fieldName
