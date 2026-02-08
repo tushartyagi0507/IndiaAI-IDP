@@ -167,6 +167,7 @@ import useUserCategory from "@/store/userCategory";
 
 const ExportPanel = () => {
   const batch_id = useExtractionStore((state) => state.batchId);
+  const currentDocument = useExtractionStore((state) => state.currentDocument);
 
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
 
@@ -176,11 +177,21 @@ const ExportPanel = () => {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE = "http://localhost:8003";
+  const API_BASE = "http://localhost:8080";
 
   const previewRef = useRef<HTMLPreElement>(null);
 
-  const { category } = useUserCategory();
+  // BUG FIX: useUserCategory() returns "" when user clicks Export/Download.
+  // Verified: the 422 error response shows "input": null for doc_type field.
+  // Root cause: useUserCategory() zustand store becomes empty after upload
+  // (same issue documented in TableViewer.tsx lines 48-50).
+  //
+  // Fix: Read category from currentDocument.category instead. This value is
+  // set at upload time (DocumentUpload.tsx line ~590: category: storedCategoryKey)
+  // when the store IS still populated, and persists on the document object in
+  // extractionStore independently of the useUserCategory store lifecycle.
+  // const { category } = useUserCategory();
+  const category = currentDocument?.category ?? "";
 
   const formats = [
     {

@@ -45,19 +45,31 @@ const TableViewer = () => {
       return;
     }
 
-    if (!category) {
-      toast({
-        title: "Missing category",
-        description: "Category information is not available for this document.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // FIX: Category guard disabled because the useUserCategory zustand store
+    // gets cleared when the upload flow completes (finishBatch → parent resets
+    // subcategory → useEffect calls resetCategory()). This causes "Missing
+    // category" errors when clicking Extract after upload finishes.
+    //
+    // This check is unnecessary because the backend's POST /document/{id}/extract
+    // endpoint already reads the category from the stored document data:
+    //   doc = get_document(doc_id)
+    //   category = doc.get("category")
+    // The category is saved during upload (save_document with category field),
+    // so it is always available server-side without the frontend sending it.
+    //
+    // if (!category) {
+    //   toast({
+    //     title: "Missing category",
+    //     description: "Category information is not available for this document.",
+    //     variant: "destructive",
+    //   });
+    //   return;
+    // }
 
     setIsLoading(true);
     try {
       const response = await fetch(
-        `http://localhost:8003/document/${document_id}/extract`,
+        `http://localhost:8080/document/${document_id}/extract`,
         {
           method: "POST",
           headers: {
@@ -75,15 +87,25 @@ const TableViewer = () => {
         );
       }
 
-      const data: FieldsResponse = await response.json();
+      const data = await response.json();
+      const fields = data.fields;
+      const toStr = (v: unknown) =>
+        v == null ? "" : typeof v === "string" ? v : String(v);
 
-      const headers = Object.keys(data.fields);
-      const row = Object.values(data.fields);
-
-      setTableData({
-        headers,
-        rows: [row],
-      });
+      if (Array.isArray(fields)) {
+        const headers = fields.length ? Object.keys(fields[0]) : [];
+        setTableData({
+          headers,
+          rows: fields.map((f: Record<string, unknown>) =>
+            headers.map((h) => toStr(f[h])),
+          ),
+        });
+      } else {
+        setTableData({
+          headers: Object.keys(fields),
+          rows: [Object.values(fields).map(toStr)],
+        });
+      }
     } catch (error) {
       console.error("Error fetching document fields:", error);
       toast({
