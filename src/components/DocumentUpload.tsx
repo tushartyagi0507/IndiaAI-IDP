@@ -578,6 +578,17 @@ const DocumentUpload = ({
 
   const simulateUpload = useCallback(
     (file: File) => {
+      // Compute effective category key directly (same logic as uploadToBackend)
+      // to avoid any timing mismatch with the Zustand store value.
+      const effectiveCategory = lockToCurrentCategory
+        ? storedCategoryKey
+        : subSubcategory &&
+            hasSubSubcategories(category ?? "", subcategory ?? "")
+          ? mapSelectionToCategoryKey(subSubcategory, "subSubcategory")
+          : subcategory
+            ? mapSelectionToCategoryKey(subcategory, "subcategory")
+            : storedCategoryKey;
+
       const doc: UploadedDocument = {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
@@ -587,7 +598,7 @@ const DocumentUpload = ({
         pageCount: 0, // Will be updated from WS document_ready
         status: "uploading",
         progress: 0,
-        category: storedCategoryKey, // Always use the mapped category from store
+        category: effectiveCategory || storedCategoryKey,
         subcategory: lockToCurrentCategory ? storedCategoryName : subcategory,
         subSubcategory: lockToCurrentCategory ? undefined : subSubcategory,
         file: file,
@@ -633,6 +644,7 @@ const DocumentUpload = ({
       }, 150);
     },
     [
+      category,
       lockToCurrentCategory,
       onDocumentUpload,
       storedCategoryKey,
