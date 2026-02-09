@@ -153,6 +153,7 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  FileText,
   Eye,
   ChevronDown,
   Loader2,
@@ -167,6 +168,7 @@ import useUserCategory from "@/store/userCategory";
 
 const ExportPanel = () => {
   const batch_id = useExtractionStore((state) => state.batchId);
+  const currentDocument = useExtractionStore((state) => state.currentDocument);
 
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
 
@@ -176,34 +178,56 @@ const ExportPanel = () => {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE = "http://localhost:8003";
+  const API_BASE = "http://localhost:8080";
 
   const previewRef = useRef<HTMLPreElement>(null);
 
-  const { category } = useUserCategory();
+  // Resolve category from multiple sources for robustness.
+  // Primary: currentDocument.category (set at upload time from the zustand store).
+  // Fallback: useUserCategory() zustand store (persisted to localStorage).
+  const { category: storeCategory } = useUserCategory();
+  const category = currentDocument?.category || storeCategory || "";
 
-  const formats = [
-    {
-      id: "json" as const,
-      label: "JSON",
-      icon: FileJson,
-      description: "Structured data format",
-    },
-    {
-      id: "csv" as const,
-      label: "Excel",
-      icon: FileSpreadsheet,
-      description: "Spreadsheet compatible",
-    },
-    /*
-    {
-      id: "doc" as const,
-      label: "DOC",
-      icon: FileText,
-      description: "Word document",
-    },
-    */
-  ];
+  const DOC_EXPORT_CATEGORIES = ["brief_background", "co_brief", "io_report", "po_brief"];
+  const useDocExport = DOC_EXPORT_CATEGORIES.includes(category);
+
+  const formats = useDocExport
+    ? [
+        {
+          id: "json" as const,
+          label: "JSON",
+          icon: FileJson,
+          description: "Structured data format",
+        },
+        {
+          id: "doc" as const,
+          label: "DOCX",
+          icon: FileText,
+          description: "Word document",
+        },
+      ]
+    : [
+        {
+          id: "json" as const,
+          label: "JSON",
+          icon: FileJson,
+          description: "Structured data format",
+        },
+        {
+          id: "csv" as const,
+          label: "Excel",
+          icon: FileSpreadsheet,
+          description: "Spreadsheet compatible",
+        },
+      ];
+
+  /* ----------------------------------------
+     Reset format when category changes
+  ---------------------------------------- */
+  useEffect(() => {
+    setSelectedFormat("json");
+    setPreviewContent("");
+  }, [category]);
 
   /* ----------------------------------------
      Auto-scroll preview when content changes
@@ -231,6 +255,20 @@ const ExportPanel = () => {
         const res = await axios.get(`${API_BASE}/batch/${batch_id}/json`);
 
         setPreviewContent(JSON.stringify(res.data, null, 2));
+      } else if (selectedFormat === "doc") {
+        const formData = new FormData();
+        formData.append("doc_type", category);
+        const res = await axios.post(
+          `${API_BASE}/batch/${batch_id}/export/doc`,
+          formData,
+          { responseType: "blob" },
+        );
+
+        setPreviewContent(
+          `DOCX file ready for download.\n\nFile size: ${(
+            res.data.size / 1024
+          ).toFixed(2)} KB\n\nClick Download to save the file.`,
+        );
       } else {
         const formData = new FormData();
         formData.append("doc_type", category);
@@ -272,17 +310,34 @@ const ExportPanel = () => {
           type: "application/json",
         });
         filename = `batch_${batch_id}.json`;
-      } else {
-        // EXCEL is now a POST request with Form Data
+      } else if (selectedFormat === "doc") {
+        // DOCX export for disciplinary case reports
         const formData = new FormData();
+        formData.append("doc_type", category);
 
+        res = await axios.post(
+          `${API_BASE}/batch/${batch_id}/export/doc`,
+          formData,
+          {
+            responseType: "blob",
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          },
+        );
+
+        blob = res.data;
+        filename = `batch_${batch_id}_report.docx`;
+      } else {
+        // EXCEL export
+        const formData = new FormData();
         formData.append("doc_type", category);
 
         res = await axios.post(
           `${API_BASE}/batch/${batch_id}/export/excel`,
           formData,
           {
-            responseType: "blob", // This must be in the config object (3rd argument)
+            responseType: "blob",
             headers: {
               "Content-Type": "multipart/form-data",
             },
@@ -419,7 +474,7 @@ const ExportPanel = () => {
             ) : (
               <Download className="w-4 h-4" />
             )}
-            Download {selectedFormat.toUpperCase()}
+            Download {selectedFormat === "csv" ? "EXCEL" : selectedFormat === "doc" ? "DOCX" : selectedFormat.toUpperCase()}
           </Button>
         </div>
       </div>

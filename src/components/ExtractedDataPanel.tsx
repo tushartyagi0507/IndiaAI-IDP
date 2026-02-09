@@ -176,6 +176,7 @@ const ExtractedDataPanel = ({
         .replace(/-/g, " ")
         .replace(/\b\w/g, (l) => l.toUpperCase()),
       value: block.content.replace(/<[^>]*>/g, "").trim(),
+      htmlContent: block.content,
       type: block.label,
       bbox: block.bbox,
       pageIndex: block.pageIndex,
@@ -208,10 +209,14 @@ const ExtractedDataPanel = ({
   const structuredData: {
     field: string;
     value: string;
+    htmlContent: string;
+    type: string;
     region: { x: number; y: number; width: number; height: number };
   }[] = processedContent.structuredFields.map((field) => ({
     field: field.label,
     value: field.value,
+    htmlContent: field.htmlContent,
+    type: field.type,
     region: {
       x: field.bbox[0],
       y: field.bbox[1],
@@ -368,12 +373,24 @@ const ExtractedDataPanel = ({
                     <p className="text-xs font-medium text-muted-foreground mb-1">
                       {item.field}
                     </p>
-                    <p className="text-sm font-medium truncate">{item.value}</p>
+                    {item.type === "Table" ? (
+                      <div
+                        className="text-sm overflow-x-auto prose prose-sm max-w-none
+                          prose-table:w-full prose-table:border-collapse prose-table:my-1
+                          prose-th:border prose-th:border-border prose-th:bg-muted/50 prose-th:px-2 prose-th:py-1 prose-th:text-left prose-th:text-xs prose-th:font-semibold
+                          prose-td:border prose-td:border-border prose-td:px-2 prose-td:py-1 prose-td:text-xs"
+                        dangerouslySetInnerHTML={{ __html: item.htmlContent }}
+                      />
+                    ) : (
+                      <p className="text-sm font-medium whitespace-pre-wrap">
+                        {item.value}
+                      </p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleCopy(item.value, item.field);

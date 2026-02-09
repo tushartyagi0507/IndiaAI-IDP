@@ -49,7 +49,7 @@ const SummaryPanel = (_props: SummaryPanelProps) => {
     setloading(true);
     try {
       const response = await fetch(
-        `http://localhost:8003/document/${document_id}/summarize`,
+        `http://localhost:8080/document/${document_id}/summarize`,
         {
           method: "POST",
         },

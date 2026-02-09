@@ -51,13 +51,13 @@ export const mapSelectionToCategoryKey = (
   if (v === "writing_extemity") return "writing_extremity";
 
   // PD Branch
-  if (v === "Apar") return "apar";
+  if (v === "apar") return "apar";
 
   // Disciplinary Cases
-  if (v === "Brief Background") return "brief_background";
-  if (v === "CO Brief") return "co_brief";
-  if (v === "IO Report") return "io_report";
-  if (v === "PO Brief") return "po_brief";
+  if (v === "brief background") return "brief_background";
+  if (v === "co brief") return "co_brief";
+  if (v === "io report") return "io_report";
+  if (v === "po brief") return "po_brief";
 
   return v; // fallback
 };

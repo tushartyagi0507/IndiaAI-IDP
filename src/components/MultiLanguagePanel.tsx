@@ -45,7 +45,7 @@
 //     setTranslateError(null);
 //     try {
 //       const response = await fetch(
-//         `http://localhost:8003/document/${document_id}/translate`,
+//         `http://localhost:8080/document/${document_id}/translate`,
 //         {
 //           method: "POST",
 //         },
@@ -331,7 +331,7 @@ const MultiLanguagePanel = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:8003/document/${document_id}/translate`,
+        `http://localhost:8080/document/${document_id}/translate`,
         {
           method: "POST",
           signal: abortControllerRef.current.signal,

@@ -266,7 +266,7 @@ const DocumentUpload = ({
         try {
           console.log("[Polling] Fetching status for batch:", batchId);
           const res = await fetch(
-            `http://localhost:8003/batch/${batchId}/status`,
+            `http://localhost:8080/batch/${batchId}/status`,
           );
 
           if (!res.ok) {
@@ -331,7 +331,7 @@ const DocumentUpload = ({
         wsRef.current = null;
       }
       batchIdRef.current = batchId;
-      const wsUrl = `ws://localhost:8003/ws/progress/${batchId}`;
+      const wsUrl = `ws://localhost:8080/ws/progress/${batchId}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -481,7 +481,7 @@ const DocumentUpload = ({
         const uploadStartTime = Date.now();
 
         // POST returns immediately — background task handles OCR
-        const response = await fetch("http://localhost:8003/upload/ocr", {
+        const response = await fetch("http://localhost:8080/upload/ocr", {
           method: "POST",
           body: formData,
         });
@@ -506,8 +506,17 @@ const DocumentUpload = ({
 
         const payload = (await response.json()) as {
           batch_id: string;
-          total_files: number;
-          filenames: string[];
+          total_files?: number;
+          filenames?: string[];
+          documents?: {
+            document_id: string;
+            filename: string;
+            num_pages?: number;
+            markdown?: string;
+            html?: string;
+            json?: Record<string, unknown>;
+            pages?: unknown[];
+          }[];
         };
 
         console.log("[DocumentUpload] Received batch_id:", payload.batch_id);
@@ -518,11 +527,30 @@ const DocumentUpload = ({
           return;
         }
 
-        // Initialize batch in the store (streaming mode)
-        initBatch(payload.batch_id, payload.total_files);
+        const totalFiles =
+          payload.total_files ??
+          payload.documents?.length ??
+          files.length;
 
-        // Connect to WebSocket + start polling fallback
-        connectWebSocket(payload.batch_id, payload.total_files);
+        // Initialize batch in the store (streaming mode)
+        initBatch(payload.batch_id, totalFiles);
+
+        // If the upload response already contains documents (synchronous mode),
+        // ingest them immediately so layout_blocks are available right away.
+        if (payload.documents && payload.documents.length > 0) {
+          console.log(
+            "[DocumentUpload] Upload response contains",
+            payload.documents.length,
+            "documents — ingesting directly",
+          );
+          for (const doc of payload.documents) {
+            handleDocumentReady(doc);
+          }
+          finishBatch();
+        } else {
+          // Connect to WebSocket + start polling fallback
+          connectWebSocket(payload.batch_id, totalFiles);
+        }
       } catch (error) {
         console.error("[DocumentUpload] Upload error:", error);
         setIsProcessing(false);
@@ -550,6 +578,17 @@ const DocumentUpload = ({
 
   const simulateUpload = useCallback(
     (file: File) => {
+      // Compute effective category key directly (same logic as uploadToBackend)
+      // to avoid any timing mismatch with the Zustand store value.
+      const effectiveCategory = lockToCurrentCategory
+        ? storedCategoryKey
+        : subSubcategory &&
+            hasSubSubcategories(category ?? "", subcategory ?? "")
+          ? mapSelectionToCategoryKey(subSubcategory, "subSubcategory")
+          : subcategory
+            ? mapSelectionToCategoryKey(subcategory, "subcategory")
+            : storedCategoryKey;
+
       const doc: UploadedDocument = {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
@@ -559,7 +598,7 @@ const DocumentUpload = ({
         pageCount: 0, // Will be updated from WS document_ready
         status: "uploading",
         progress: 0,
-        category: storedCategoryKey, // Always use the mapped category from store
+        category: effectiveCategory || storedCategoryKey,
         subcategory: lockToCurrentCategory ? storedCategoryName : subcategory,
         subSubcategory: lockToCurrentCategory ? undefined : subSubcategory,
         file: file,
@@ -605,6 +644,7 @@ const DocumentUpload = ({
       }, 150);
     },
     [
+      category,
       lockToCurrentCategory,
       onDocumentUpload,
       storedCategoryKey,
