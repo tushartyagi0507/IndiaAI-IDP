@@ -648,7 +648,14 @@ const Index = () => {
     <div className="h-screen overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
       <Header />
 
-      <main className="container px-4 py-4 h-[calc(100vh-72px)]">
+      <main
+        className={cn(
+          "container px-4 py-4",
+          currentDocument
+            ? "h-[calc(100vh-72px)] overflow-hidden"
+            : "min-h-[calc(100vh-72px)] overflow-y-auto",
+        )}
+      >
         {/* DocumentUpload is always mounted to keep WebSocket alive during processing */}
         {/* It shows its own processing overlay when active */}
         <DocumentUpload
@@ -661,22 +668,6 @@ const Index = () => {
 
         {!currentDocument && (
           <div className="h-full flex flex-col justify-center">
-            {/* Hero Section */}
-            <div className="max-w-4xl mx-auto mb-12 text-center animate-fade-in">
-              <h1 className="text-4xl md:text-5xl lg:text-5xl font-display font-bold mb-4 leading-tight">
-                Transform Documents with
-                <span className="block gradient-text">
-                  India AI Intelligence
-                </span>
-              </h1>
-
-              <p className="text-md text-muted-foreground max-w-2xl mx-auto mb-8">
-                Extract, analyze, and summarize documents in multiple languages.
-                Experience the power of AI-driven document processing made in
-                India.
-              </p>
-            </div>
-
             {/* Add-to-setup banner when adding to current session */}
             {isAddToCurrentSetup && uploadedDocuments.length > 0 && (
               <div className="max-w-3xl mx-auto w-full mb-4 px-4 py-3 rounded-xl bg-primary/10 border border-primary/20">
