@@ -219,6 +219,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Languages, ArrowLeftRight, Loader2, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 import { cn } from "@/lib/utils";
 import { useExtractionStore } from "@/store/extractionStore";
@@ -488,7 +489,9 @@ const MultiLanguagePanel = () => {
       "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
     return (
       <div ref={ref} className={proseClasses}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+          {text}
+        </ReactMarkdown>
       </div>
     );
   };

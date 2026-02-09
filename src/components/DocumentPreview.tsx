@@ -3,9 +3,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCw,
-  ChevronLeft,
-  ChevronRight,
-  Maximize2,
   Sun,
   Moon,
   FileText,
@@ -37,15 +34,13 @@ const DocumentPreview = ({
 }: DocumentPreviewProps) => {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
   const [isDarkBg, setIsDarkBg] = useState(false);
-  const [showThumbnails, setShowThumbnails] = useState(true);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize file type detection to update when file changes
   const isImage = useMemo(() => {
@@ -67,10 +62,6 @@ const DocumentPreview = ({
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 25, 200));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 25, 50));
   const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
-  const handlePrevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
-  const handleNextPage = () =>
-    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
-
   // Debug: Log file info
   useEffect(() => {
     if (file) {
@@ -106,7 +97,6 @@ const DocumentPreview = ({
         console.log("PDF loaded successfully, pages:", pdf.numPages);
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
-        setCurrentPage(1);
       } catch (error) {
         console.error("Error loading PDF:", error);
         setIsLoading(false);
@@ -121,43 +111,53 @@ const DocumentPreview = ({
     fileReader.readAsArrayBuffer(file);
   }, [file, isPdf]);
 
-  // Render PDF page
+  // Render PDF pages in a single scrollable column
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current || !isPdf) return;
+    if (!pdfDoc || !pagesContainerRef.current || !isPdf) return;
 
-    const renderPage = async () => {
+    const renderPages = async () => {
       try {
         setIsRendering(true);
-        const page = await pdfDoc.getPage(currentPage);
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = pagesContainerRef.current;
+        if (!container) return;
 
-        const context = canvas.getContext("2d");
-        if (!context) return;
-
-        const viewport = page.getViewport({ scale: 1.0 });
+        container.innerHTML = "";
         const scale = zoom / 100;
-        const scaledViewport = page.getViewport({ scale });
 
-        canvas.height = scaledViewport.height;
-        canvas.width = scaledViewport.width;
+        for (
+          let pageNumber = 1;
+          pageNumber <= pdfDoc.numPages;
+          pageNumber += 1
+        ) {
+          const page = await pdfDoc.getPage(pageNumber);
+          const viewport = page.getViewport({ scale, rotation });
 
-        const renderContext = {
-          canvasContext: context,
-          viewport: scaledViewport,
-          canvas: canvas,
-        };
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
 
-        await page.render(renderContext).promise;
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          canvas.className = "block";
+
+          const pageWrapper = document.createElement("div");
+          pageWrapper.className =
+            "bg-card shadow-xl rounded-lg overflow-hidden";
+          pageWrapper.appendChild(canvas);
+          container.appendChild(pageWrapper);
+
+          await page.render({ canvasContext: context, viewport, canvas })
+            .promise;
+        }
       } catch (error) {
-        console.error("Error rendering PDF page:", error);
+        console.error("Error rendering PDF pages:", error);
       } finally {
         setIsRendering(false);
       }
     };
 
-    renderPage();
-  }, [pdfDoc, currentPage, zoom, isPdf, rotation]);
+    renderPages();
+  }, [pdfDoc, zoom, isPdf, rotation]);
 
   // Load image
   useEffect(() => {
@@ -178,30 +178,6 @@ const DocumentPreview = ({
 
   return (
     <div className="flex h-full bg-card rounded-2xl border border-border/50 overflow-hidden">
-      {/* Thumbnails Sidebar */}
-      {showThumbnails && isPdf && pdfDoc && totalPages > 1 && (
-        <div className="w-24 border-r border-border/50 bg-muted/30 p-2 overflow-y-auto scrollbar-thin">
-          <div className="space-y-2">
-            {Array.from({ length: totalPages }, (_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentPage(i + 1)}
-                className={cn(
-                  "w-full aspect-[3/4] rounded-lg border-2 transition-all duration-200 bg-background flex items-center justify-center overflow-hidden",
-                  currentPage === i + 1
-                    ? "border-primary shadow-md"
-                    : "border-transparent hover:border-primary/30",
-                )}
-              >
-                <div className="w-full h-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
-                  <FileText className="w-6 h-6 text-muted-foreground/50" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Main Preview Area */}
       <div className="flex-1 flex flex-col">
         {/* Toolbar */}
@@ -232,31 +208,9 @@ const DocumentPreview = ({
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePrevPage}
-              disabled={currentPage <= 1 || !isPdf || totalPages <= 1}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[80px] text-center">
-              {isPdf
-                ? `Page ${currentPage} of ${totalPages}`
-                : isImage
-                  ? "Image"
-                  : "Document"}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleNextPage}
-              disabled={currentPage >= totalPages || !isPdf || totalPages <= 1}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
+          <span className="text-sm font-medium min-w-[80px] text-center">
+            {isPdf ? `Pages: ${totalPages}` : isImage ? "Image" : "Document"}
+          </span>
 
           <div className="flex items-center gap-1">
             <Button
@@ -269,13 +223,6 @@ const DocumentPreview = ({
               ) : (
                 <Moon className="w-4 h-4" />
               )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowThumbnails(!showThumbnails)}
-            >
-              <Maximize2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -301,16 +248,12 @@ const DocumentPreview = ({
           )}
 
           {file && (
-            <div className="relative bg-card shadow-xl rounded-lg overflow-hidden transition-transform duration-300">
+            <div className="relative w-full flex flex-col items-center gap-6">
               {isPdf && pdfDoc ? (
                 <div
-                  style={{
-                    transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-                    transformOrigin: "top center",
-                  }}
-                >
-                  <canvas ref={canvasRef} className="block" />
-                </div>
+                  ref={pagesContainerRef}
+                  className="w-full flex flex-col items-center gap-6"
+                />
               ) : isPdf && !pdfDoc ? (
                 <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin mb-2" />
