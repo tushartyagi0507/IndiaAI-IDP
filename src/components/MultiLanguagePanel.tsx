@@ -219,6 +219,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Languages, ArrowLeftRight, Loader2, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 import { cn } from "@/lib/utils";
 import { useExtractionStore } from "@/store/extractionStore";
@@ -483,12 +484,42 @@ const MultiLanguagePanel = () => {
       );
     }
 
+    // Convert HTML tables to markdown tables so ReactMarkdown can render them
+    const processedText = text.replace(
+      /<table>([\s\S]*?)<\/table>/gi,
+      (_match, inner: string) => {
+        const rows: string[][] = [];
+        const rowRegex = /<tr>([\s\S]*?)<\/tr>/gi;
+        let rowMatch;
+        while ((rowMatch = rowRegex.exec(inner)) !== null) {
+          const cells: string[] = [];
+          const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+          let cellMatch;
+          while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+            cells.push(cellMatch[1].trim());
+          }
+          if (cells.length > 0) rows.push(cells);
+        }
+        if (rows.length === 0) return _match;
+        const colCount = Math.max(...rows.map((r) => r.length));
+        const header = "| " + rows[0].map((c) => c).join(" | ") + " |";
+        const separator = "| " + Array(colCount).fill("---").join(" | ") + " |";
+        const body = rows
+          .slice(1)
+          .map((r) => "| " + r.join(" | ") + " |")
+          .join("\n");
+        return header + "\n" + separator + "\n" + body;
+      },
+    );
+
     const proseClasses =
       proseClassName ||
       "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
     return (
       <div ref={ref} className={proseClasses}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+          {processedText}
+        </ReactMarkdown>
       </div>
     );
   };
