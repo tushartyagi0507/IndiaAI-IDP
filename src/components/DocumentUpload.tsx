@@ -897,197 +897,289 @@ const DocumentUpload = ({
         )}
 
       <div className="space-y-4">
-        {/* Upload Zone - hidden when overlay is showing or when hideUploadUI is true */}
+        {/* Hero + Upload + Features - hidden when overlay is showing or when hideUploadUI is true */}
         {!isProcessing && !hideUploadUI && (
-          <div
-            className={cn(
-              "relative rounded-2xl border-2 border-dashed transition-all duration-300 p-8",
-              isDragging
-                ? "border-primary bg-primary/5 scale-[1.02]"
-                : "border-border hover:border-primary/50 hover:bg-muted/30",
-            )}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            {/* Decorative gradient */}
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-emerald/5 pointer-events-none" />
-
-            {/* Category Selector: locked (add mode) or editable (new session) */}
-            <div className="relative mb-4 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm p-4">
-              {lockToCurrentCategory ? (
-                <div className="space-y-2">
-                  <Label>Category (fixed for this session)</Label>
-                  {storedCategoryKey ? (
-                    <p className="text-sm font-medium text-foreground py-2 px-3 rounded-lg bg-muted/60">
-                      {storedCategoryName || storedCategoryKey}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-destructive py-2">
-                      No category set. Start a new session to choose a category.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div
-                  className={cn(
-                    "grid gap-4",
-                    category &&
-                      subcategory &&
-                      hasSubSubcategories(category, subcategory)
-                      ? "md:grid-cols-3"
-                      : "md:grid-cols-2",
-                  )}
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="document-category">Category</Label>
-                    <Select
-                      value={category}
-                      onValueChange={(value) => {
-                        setCategory(value);
-                        setSubcategory(undefined);
-                      }}
-                    >
-                      <SelectTrigger
-                        id="document-category"
-                        className="bg-background/70"
-                      >
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(CATEGORY_OPTIONS).map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="document-subcategory">Subcategory</Label>
-                    <Select
-                      value={subcategory}
-                      onValueChange={setSubcategory}
-                      disabled={!category}
-                    >
-                      <SelectTrigger
-                        id="document-subcategory"
-                        className={cn(
-                          "bg-background/70",
-                          !category && "opacity-70 cursor-not-allowed",
-                        )}
-                      >
-                        <SelectValue
-                          placeholder={
-                            category
-                              ? "Select a subcategory"
-                              : "Select a category first"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {category &&
-                          getSubcategories(category).map((sub) => (
-                            <SelectItem key={sub} value={sub}>
-                              {sub}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {category &&
-                    subcategory &&
-                    hasSubSubcategories(category, subcategory) && (
-                      <div className="space-y-2">
-                        <Label htmlFor="document-sub-subcategory">
-                          Sub-subcategory
-                        </Label>
-                        <Select
-                          value={subSubcategory}
-                          onValueChange={setSubSubcategory}
-                          disabled={!subcategory}
-                        >
-                          <SelectTrigger
-                            id="document-sub-subcategory"
-                            className={cn(
-                              "bg-background/70",
-                              !subcategory && "opacity-70 cursor-not-allowed",
-                            )}
-                          >
-                            <SelectValue
-                              placeholder={
-                                subcategory
-                                  ? "Select a sub-subcategory"
-                                  : "Select a subcategory first"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getSubSubcategories(category, subcategory)?.map(
-                              (subSub) => (
-                                <SelectItem key={subSub} value={subSub}>
-                                  {subSub}
-                                </SelectItem>
-                              ),
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                </div>
-              )}
-            </div>
-
-            <div className="relative flex flex-col items-center justify-center gap-4 py-4">
-              <div
-                className={cn(
-                  "p-4 rounded-2xl transition-all duration-300",
-                  isDragging
-                    ? "bg-primary/20 scale-110"
-                    : "bg-gradient-to-br from-primary/10 to-emerald/10",
-                )}
-              >
-                <Upload
-                  className={cn(
-                    "w-12 h-12 transition-colors duration-300",
-                    isDragging ? "text-primary" : "text-primary/70",
-                  )}
-                />
-              </div>
-
-              <div className="text-center space-y-2">
-                <h3 className="text-xl font-display font-semibold">
-                  {isDragging ? "Drop your document here" : "Upload Document"}
-                </h3>
-                <p className="text-muted-foreground max-w-sm text-sm">
-                  {lockToCurrentCategory && storedCategoryKey
-                    ? "Drag and drop or browse to add more documents for the same category."
-                    : "Drag and drop your PDF or image files here, or click to browse. Choose category and subcategory first."}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <Button variant="hero" size="lg" asChild>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.png,.jpg,.jpeg"
-                      multiple
-                      onChange={handleFileSelect}
-                    />
-                    Browse Files
-                  </label>
-                </Button>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Supported: PDF, PNG, JPG, JPEG
+          <>
+            {/* Hero Section */}
+            <div className="max-w-4xl mx-auto mb-10 text-center animate-fade-in">
+              <h1 className="text-4xl md:text-5xl lg:text-5xl font-display font-bold mb-4 leading-tight">
+                Transform Documents with
+                <span className="block gradient-text">
+                  India AI Intelligence
+                </span>
+              </h1>
+              <p className="text-md text-muted-foreground max-w-2xl mx-auto mb-6">
+                Extract, analyze, and summarize documents in multiple languages.
+                Experience the power of AI-driven document processing made in
+                India.
               </p>
             </div>
-          </div>
+
+            {/* Upload Zone - scroll target for "Back to upload" */}
+            <div
+              id="upload-zone"
+              className={cn(
+                "relative rounded-2xl border-2 border-dashed transition-all duration-300 p-8 scroll-mt-24",
+                isDragging
+                  ? "border-primary bg-primary/5 scale-[1.02]"
+                  : "border-border hover:border-primary/50 hover:bg-muted/30",
+              )}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {/* Decorative gradient */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-emerald/5 pointer-events-none" />
+
+              {/* Category Selector: locked (add mode) or editable (new session) */}
+              <div className="relative mb-4 rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm p-4">
+                {lockToCurrentCategory ? (
+                  <div className="space-y-2">
+                    <Label>Category (fixed for this session)</Label>
+                    {storedCategoryKey ? (
+                      <p className="text-sm font-medium text-foreground py-2 px-3 rounded-lg bg-muted/60">
+                        {storedCategoryName || storedCategoryKey}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-destructive py-2">
+                        No category set. Start a new session to choose a
+                        category.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "grid gap-4",
+                      category &&
+                        subcategory &&
+                        hasSubSubcategories(category, subcategory)
+                        ? "md:grid-cols-3"
+                        : "md:grid-cols-2",
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor="document-category">Category</Label>
+                      <Select
+                        value={category}
+                        onValueChange={(value) => {
+                          setCategory(value);
+                          setSubcategory(undefined);
+                        }}
+                      >
+                        <SelectTrigger
+                          id="document-category"
+                          className="bg-background/70"
+                        >
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(CATEGORY_OPTIONS).map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="document-subcategory">Subcategory</Label>
+                      <Select
+                        value={subcategory}
+                        onValueChange={setSubcategory}
+                        disabled={!category}
+                      >
+                        <SelectTrigger
+                          id="document-subcategory"
+                          className={cn(
+                            "bg-background/70",
+                            !category && "opacity-70 cursor-not-allowed",
+                          )}
+                        >
+                          <SelectValue
+                            placeholder={
+                              category
+                                ? "Select a subcategory"
+                                : "Select a category first"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {category &&
+                            getSubcategories(category).map((sub) => (
+                              <SelectItem key={sub} value={sub}>
+                                {sub}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {category &&
+                      subcategory &&
+                      hasSubSubcategories(category, subcategory) && (
+                        <div className="space-y-2">
+                          <Label htmlFor="document-sub-subcategory">
+                            Sub-subcategory
+                          </Label>
+                          <Select
+                            value={subSubcategory}
+                            onValueChange={setSubSubcategory}
+                            disabled={!subcategory}
+                          >
+                            <SelectTrigger
+                              id="document-sub-subcategory"
+                              className={cn(
+                                "bg-background/70",
+                                !subcategory && "opacity-70 cursor-not-allowed",
+                              )}
+                            >
+                              <SelectValue
+                                placeholder={
+                                  subcategory
+                                    ? "Select a sub-subcategory"
+                                    : "Select a subcategory first"
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getSubSubcategories(category, subcategory)?.map(
+                                (subSub) => (
+                                  <SelectItem key={subSub} value={subSub}>
+                                    {subSub}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative flex flex-col items-center justify-center gap-4 py-4">
+                <div
+                  className={cn(
+                    "p-4 rounded-2xl transition-all duration-300",
+                    isDragging
+                      ? "bg-primary/20 scale-110"
+                      : "bg-gradient-to-br from-primary/10 to-emerald/10",
+                  )}
+                >
+                  <Upload
+                    className={cn(
+                      "w-12 h-12 transition-colors duration-300",
+                      isDragging ? "text-primary" : "text-primary/70",
+                    )}
+                  />
+                </div>
+
+                <div className="text-center space-y-2">
+                  <h3 className="text-xl font-display font-semibold">
+                    {isDragging ? "Drop your document here" : "Upload Document"}
+                  </h3>
+                  <p className="text-muted-foreground max-w-sm text-sm">
+                    {lockToCurrentCategory && storedCategoryKey
+                      ? "Drag and drop or browse to add more documents for the same category."
+                      : "Drag and drop your PDF or image files here, or click to browse. Choose category and subcategory first."}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <Button variant="hero" size="lg" asChild>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        multiple
+                        onChange={handleFileSelect}
+                      />
+                      Browse Files
+                    </label>
+                  </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Supported: PDF, PNG, JPG, JPEG
+                </p>
+              </div>
+            </div>
+
+            {/* Features Section */}
+            <div
+              id="features"
+              className="max-w-5xl mx-auto mt-16 mb-8 animate-slide-up scroll-mt-24"
+            >
+              <h2 className="text-2xl font-display font-bold text-center mb-8">
+                Powerful Features
+              </h2>
+              <div className="grid md:grid-cols-3 gap-6">
+                {[
+                  {
+                    icon: "🔍",
+                    title: "Smart Extraction",
+                    desc: "Extract text, tables, and structured data automatically",
+                  },
+                  {
+                    icon: "🌐",
+                    title: "Multi-Language",
+                    desc: "Support for Hindi, English, and 50+ languages",
+                  },
+                  {
+                    icon: "✨",
+                    title: "AI Summaries",
+                    desc: "Generate cited summaries with one click",
+                  },
+                  {
+                    icon: "📊",
+                    title: "Table Detection",
+                    desc: "Identify and export tables as spreadsheets",
+                  },
+                  {
+                    icon: "🔗",
+                    title: "Smart Linking",
+                    desc: "Click on summaries to see source regions",
+                  },
+                  {
+                    icon: "📥",
+                    title: "Flexible Export",
+                    desc: "Download as JSON, CSV, or Word documents",
+                  },
+                ].map((feature, idx) => (
+                  <div
+                    key={idx}
+                    className="group p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-lg transition-all duration-300"
+                  >
+                    <span className="text-3xl mb-4 block">{feature.icon}</span>
+                    <h3 className="font-display font-semibold mb-2">
+                      {feature.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {feature.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-10 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    document
+                      .getElementById("upload-zone")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  <Upload className="w-4 h-4" />
+                  Back to upload
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </>
