@@ -217,13 +217,78 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Languages, ArrowLeftRight, Loader2, Download } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 
 import { cn } from "@/lib/utils";
 import { useExtractionStore } from "@/store/extractionStore";
 import { useToast } from "@/hooks/use-toast";
+
+/**
+ * Normalise spaced-out HTML tags that translation APIs often produce.
+ * e.g. "< br / >" → "<br/>", "< / td >" → "</td>", "< td >" → "<td>"
+ */
+const normalizeHTMLTags = (text: string): string =>
+  text
+    .replace(/<\s+/g, "<")
+    .replace(/\s+>/g, ">")
+    .replace(/<\/\s+/g, "</")
+    .replace(/\s+\/>/g, "/>");
+
+/** Strip image tags (HTML & markdown) and replace with plain alt text */
+const stripImages = (text: string): string =>
+  text
+    .replace(/<img[^>]*alt=["']([^"']*)["'][^>]*\/?>/gi, (_m, alt: string) =>
+      alt ? `Image: ${alt}` : "",
+    )
+    .replace(/<img[^>]*\/?>/gi, "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, (_m, alt: string) =>
+      alt ? `Image: ${alt}` : "",
+    );
+
+/**
+ * Convert basic markdown syntax to HTML so the content can always be
+ * rendered via dangerouslySetInnerHTML. Existing HTML tags pass through
+ * untouched; only markdown-specific syntax is converted.
+ */
+const markdownToHtml = (md: string): string => {
+  let html = md;
+
+  // Headings (run largest → smallest so ## doesn't match before ###)
+  html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
+  html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
+  html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+  html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // Horizontal rules
+  html = html.replace(/^[-*_]{3,}\s*$/gm, "<hr/>");
+
+  // Bold (**text** or __text__)
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
+
+  // Italic (*text*) – only between non-word chars to avoid breaking URLs
+  html = html.replace(/(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)/g, "<em>$1</em>");
+
+  // Two trailing spaces + newline → <br/> (markdown explicit line break)
+  html = html.replace(/ {2,}\n/g, "<br/>");
+
+  // Double newline → visible paragraph break
+  html = html.replace(/\n{2,}/g, "<br/><br/>");
+
+  // Remaining single newlines → <br/>
+  html = html.replace(/\n/g, "<br/>");
+
+  return html;
+};
+
+/** Preprocessing pipeline for original (HTML) content */
+const preprocessContent = (text: string): string =>
+  stripImages(normalizeHTMLTags(text));
+
+/** Preprocessing pipeline for translated content (markdown + HTML mix) */
+const preprocessTranslated = (text: string): string =>
+  markdownToHtml(preprocessContent(text));
 
 const MultiLanguagePanel = () => {
   const [viewMode, setViewMode] = useState<
@@ -360,8 +425,7 @@ const MultiLanguagePanel = () => {
         "";
 
       setTranslatedText(translated || null);
-    } catch (error: any) {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (error.name !== "AbortError") {
         const message =
           error instanceof Error
@@ -450,16 +514,26 @@ const MultiLanguagePanel = () => {
     const proseClasses =
       proseClassName ||
       "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
+
+    const cleaned = preprocessContent(text);
+
     return (
       <div
         ref={ref}
         className={proseClasses}
-        dangerouslySetInnerHTML={{ __html: text }}
+        dangerouslySetInnerHTML={{ __html: cleaned }}
       />
     );
   };
 
-  const renderMarkdown = (
+  /**
+   * Render translated content. The translation API may return pure markdown,
+   * HTML, or a mix of both (with spaced-out tags like "< td >").
+   * preprocessTranslated handles all three: it normalises HTML tags, strips
+   * images, then converts any remaining markdown syntax to HTML so we can
+   * always render via dangerouslySetInnerHTML.
+   */
+  const renderTranslated = (
     text: string | null,
     isLoading?: boolean,
     ref?: React.RefObject<HTMLDivElement>,
@@ -487,12 +561,15 @@ const MultiLanguagePanel = () => {
     const proseClasses =
       proseClassName ||
       "prose prose-sm prose-slate max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-foreground prose-p:leading-relaxed prose-p:my-3 prose-strong:text-foreground prose-strong:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-table:w-full prose-table:border-collapse prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-foreground prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-td:text-foreground prose-ul:my-3 prose-ol:my-3 prose-li:text-foreground prose-li:my-1 prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm";
+
+    const htmlContent = preprocessTranslated(text);
+
     return (
-      <div ref={ref} className={proseClasses}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-          {text}
-        </ReactMarkdown>
-      </div>
+      <div
+        ref={ref}
+        className={proseClasses}
+        dangerouslySetInnerHTML={{ __html: htmlContent }}
+      />
     );
   };
 
@@ -586,7 +663,7 @@ const MultiLanguagePanel = () => {
                   {translateError}
                 </p>
               ) : (
-                renderMarkdown(
+                renderTranslated(
                   translatedText,
                   isTranslating,
                   translatedRef,
@@ -617,7 +694,7 @@ const MultiLanguagePanel = () => {
                     {translateError}
                   </p>
                 ) : (
-                  renderMarkdown(
+                  renderTranslated(
                     translatedText,
                     isTranslating,
                     translatedRef,

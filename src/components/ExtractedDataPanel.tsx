@@ -74,10 +74,20 @@ const ExtractedDataPanel = ({
     const pages = selectedDocument?.pages;
     if (!pages || !Array.isArray(pages) || pages.length === 0) {
       console.log("[ExtractedDataPanel] No pages found, using raw HTML");
-      // Strip all image tags from HTML
+      // Replace images with their alt text for a clean preview
       const htmlWithoutImages = (selectedDocument?.html ?? "")
-        .replace(/<img[^>]*>/gi, "")
-        .replace(/!\[.*?\]\(.*?\)/g, ""); // Remove markdown images
+        .replace(
+          /<img[^>]*alt=["']([^"']*)["'][^>]*>/gi,
+          '<span class="text-muted-foreground text-xs">Image: $1</span>',
+        )
+        .replace(
+          /<img[^>]*>/gi,
+          '<span class="text-muted-foreground text-xs">Image</span>',
+        )
+        .replace(
+          /!\[([^\]]*)\]\([^)]+\)/g,
+          (_match, alt) => `Image: ${alt || "No description"}`,
+        );
 
       return {
         html: htmlWithoutImages,
@@ -120,10 +130,20 @@ const ExtractedDataPanel = ({
       console.log(
         "[ExtractedDataPanel] No layout_blocks found across all pages, using raw HTML",
       );
-      // Strip all image tags from HTML
+      // Replace images with their alt text for a clean preview
       const htmlWithoutImages = (selectedDocument?.html ?? "")
-        .replace(/<img[^>]*>/gi, "")
-        .replace(/!\[.*?\]\(.*?\)/g, ""); // Remove markdown images
+        .replace(
+          /<img[^>]*alt=["']([^"']*)["'][^>]*>/gi,
+          '<span class="text-muted-foreground text-xs">Image: $1</span>',
+        )
+        .replace(
+          /<img[^>]*>/gi,
+          '<span class="text-muted-foreground text-xs">Image</span>',
+        )
+        .replace(
+          /!\[([^\]]*)\]\([^)]+\)/g,
+          (_match, alt) => `Image: ${alt || "No description"}`,
+        );
 
       return {
         html: htmlWithoutImages,
@@ -193,12 +213,22 @@ const ExtractedDataPanel = ({
       })),
     });
 
-    // Create cleaned HTML content from all pages - strip all image tags
+    // Create cleaned HTML content from all pages - replace images with alt text
     const cleanHtml = filteredBlocks
       .map((block) => block.content)
       .join("\n\n")
-      .replace(/<img[^>]*>/gi, "")
-      .replace(/!\[.*?\]\(.*?\)/g, "");
+      .replace(
+        /<img[^>]*alt=["']([^"']*)["'][^>]*>/gi,
+        '<span class="text-muted-foreground text-xs">Image: $1</span>',
+      )
+      .replace(
+        /<img[^>]*>/gi,
+        '<span class="text-muted-foreground text-xs">Image</span>',
+      )
+      .replace(
+        /!\[([^\]]*)\]\([^)]+\)/g,
+        (_match, alt) => `Image: ${alt || "No description"}`,
+      );
 
     return {
       html: cleanHtml,
@@ -310,17 +340,29 @@ const ExtractedDataPanel = ({
                       prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
                       prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
                       prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-                      [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm
-                      [&_img]:hidden"
+                      [&>p]:mb-3 [&>p]:text-foreground [&>p]:text-sm"
                     dangerouslySetInnerHTML={{
                       __html: (processedContent.html || sampleRawHtml)
-                        .replace(/<img[^>]*>/gi, "")
-                        .replace(/!\[.*?\]\(.*?\)/g, ""),
+                        .replace(
+                          /<img[^>]*alt=["']([^"']*)["'][^>]*>/gi,
+                          '<span class="text-muted-foreground text-xs">Image: $1</span>',
+                        )
+                        .replace(
+                          /<img[^>]*>/gi,
+                          '<span class="text-muted-foreground text-xs">Image</span>',
+                        )
+                        .replace(
+                          /!\[([^\]]*)\]\([^)]+\)/g,
+                          (_match, alt) => `Image: ${alt || "No description"}`,
+                        ),
                     }}
                   />
                 ) : sampleRawMarkdown ? (
                   <div className="prose prose-sm prose-slate max-w-none whitespace-pre-wrap text-foreground">
-                    {sampleRawMarkdown.replace(/!\[.*?\]\(.*?\)/g, "")}
+                    {sampleRawMarkdown.replace(
+                      /!\[([^\]]*)\]\([^)]+\)/g,
+                      (_match, alt) => `Image: ${alt || "No description"}`,
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8 space-y-3">

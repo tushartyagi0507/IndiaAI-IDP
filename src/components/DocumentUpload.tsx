@@ -854,7 +854,7 @@ const DocumentUpload = ({
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
                           <span>{formatFileSize(file.size)}</span>
                           <span>•</span>
-                          <span>{file.pageCount} pages</span>
+                          {/* <span>{file.pageCount} pages</span> */}
                         </div>
 
                         {file.status === "uploading" && (

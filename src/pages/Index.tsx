@@ -442,6 +442,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import useUserCategory from "@/store/userCategory";
+import { Footer } from "@/components/Footer";
 
 const Index = () => {
   const [uploadedDocuments, setUploadedDocuments] = useState<
@@ -645,7 +646,7 @@ const Index = () => {
   ] as const;
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-background via-background to-muted/30">
+    <div className="h-screen overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
       <Header />
 
       <main
@@ -861,6 +862,8 @@ const Index = () => {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 };
